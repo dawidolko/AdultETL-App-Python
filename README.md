@@ -24,7 +24,6 @@ DataTransmuter-App-Python/
 ├── README.md             # Project overview and instructions
 ├── LICENSE               # Licensing information
 ├── docs/
-└── tests/
 ```
 
 ## Installation
