@@ -20,7 +20,7 @@ At its core, DataTransmuter-App-Python is all about transforming raw data into i
 ## Project Structure
 
 ``` 
-DataTransmuter-App-Python/
+DataTransmuter-App-Python/ 
 ├── README.md             # Project overview and instructions
 ├── LICENSE               # Licensing information
 ├── docs/
