@@ -1,7 +1,7 @@
 # DataTransmuter-App-Python
 
 DataTransmuter-App-Python is a versatile, Python-based GUI application designed for data warehousing projects. Developed as part of an academic course, this project bridges the gap between theory and practice by showcasing a full-featured ETL (Extract, Transform, Load) pipeline in a user-friendly environment. Whether you’re a student or a professional, this tool offers an educational yet practical insight into modern data processing techniques.
-
+ 
 ## Overview
 
 At its core, DataTransmuter-App-Python is all about transforming raw data into insightful information. The application lets you extract data from various sources, perform essential transformations like normalization and standardization, and then load the processed data into your data warehouse. All these operations are accessible via an intuitive GUI built with popular Python libraries such as PySimpleGUI.
