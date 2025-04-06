@@ -1,34 +1,32 @@
 # Adult
 
-Predict whether annual income of an individual exceeds $50K/yr based on census data. Also known as "Census Income" dataset.
+Predict whether an individual's annual income exceeds $50K per year based on census data. This dataset is also known as the "Census Income" dataset.
 
-Dataset Characteristics
-Multivariate
+## Dataset Characteristics
 
-Subject Area
-Social Science
+- **Type:** Multivariate
+- **Subject Area:** Social Science
+- **Associated Task:** Classification
+- **Feature Types:** Categorical, Integer
 
-Associated Tasks
-Classification
+## Dataset Details
 
-Feature Type
-Categorical, Integer
+- **Instances:** 48,842
+- **Features:** 14
 
-# Instances
-48842
+## Additional Information
 
-# Features
-14
+The dataset was extracted by Barry Becker from the 1994 Census database. The extraction process applied the following conditions to obtain a set of reasonably clean records:
 
-Dataset Information
-Additional Information
+- AAGE > 16
+- AGI > 100
+- AFNLWGT > 1
+- HRSWK > 0
 
-Extraction was done by Barry Becker from the 1994 Census database.  A set of reasonably clean records was extracted using the following conditions: ((AAGE>16) && (AGI>100) && (AFNLWGT>1)&& (HRSWK>0))
+The primary prediction task is to determine whether a person's income exceeds $50,000 per year.
 
-Prediction task is to determine whether a person's income is over $50,000 a year.
+## Missing Values
 
-Has Missing Values?
+- **Present:** Yes
 
-Yes 
-
-link: https://archive.ics.uci.edu/dataset/2/adult
+For further details, visit the [UCI Adult Dataset page](https://archive.ics.uci.edu/dataset/2/adult).
