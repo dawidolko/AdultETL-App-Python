@@ -1,0 +1,1 @@
+python -m pip install --force-reinstall --extra-index-url https://PySimpleGUI.net/install PySimpleGUI

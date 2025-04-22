@@ -1,0 +1,10 @@
+title: DataFusion - Python Application
+description: Project as part of the Data Warehousing subject.
+GitHub Stars: https://github.com/dawidolko/DataFusion-App-Python
+icon: src/assets/logo.png
+favicon: "src/assets/logo.png"
+show_downloads: true
+theme: jekyll-theme-midnight
+# github:
+#   zip_url: https://py.dawidolko.pl/download.zip
+#   another_url: another value
