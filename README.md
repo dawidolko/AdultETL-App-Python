@@ -2,6 +2,8 @@
 
 DataFusion-App-Python is a comprehensive, Python-based GUI application developed for data analysis, processing, and machine learning tasks. The project integrates powerful data manipulation techniques with a user-friendly interface, making it an excellent tool for both educational and professional purposes. This application is designed to process and analyze data from two distinct datasets: the UCI Adult dataset and the UCI Chronic Kidney Disease dataset, enabling users to explore and uncover insights across a variety of domains.
 
+![Full Screen Screenshot](src/assets/screen-app.png)
+
 ## Overview
 
 At its core, DataFusion-App-Python provides a unified platform for working with real-world datasets, offering a variety of data processing, statistical analysis, and machine learning features. The application allows users to:
