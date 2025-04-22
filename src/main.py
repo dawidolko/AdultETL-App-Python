@@ -1,19 +1,18 @@
 import threading
 
-import PySimpleGUI as sg # type: ignore
-import pandas as pd # type: ignore
-import numpy as np # type: ignore
-import matplotlib.pyplot as plt # type: ignore
+import PySimpleGUI as sg
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
 import time
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg # type: ignore
-from sklearn.preprocessing import StandardScaler, MinMaxScaler, LabelEncoder # type: ignore
-from sklearn.model_selection import train_test_split # type: ignore
-from sklearn.linear_model import LogisticRegression # type: ignore
-from sklearn.cluster import KMeans # type: ignore
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from sklearn.preprocessing import StandardScaler, MinMaxScaler, LabelEncoder
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LogisticRegression
+from sklearn.cluster import KMeans
 
 # ------------------ Global GUI Settings ------------------ #
 sg.set_options(font=("Helvetica", 12))
-sg.theme("SystemDefaultForReal")
 
 # ------------------ Helper Functions ------------------ #
 
@@ -32,39 +31,6 @@ def load_adult_dataset():
         df = pd.read_csv('adult.data', header=None, names=col_names, skipinitialspace=True)
     df.replace('?', np.nan, inplace=True)
     return df
-
-
-def animate_logo(window):
-    # Poprawiony layout do animacji
-    layout = [
-        [sg.Text('DataFusion', font=("Helvetica", 20), justification='center', size=(20, 1))],  # Wyśrodkowany napis
-        [sg.Image(filename='assets/logo.png', size=(200, 200), key="-LOGO-", pad=(0, 50))],
-    ]
-
-    # Tworzymy okno do animacji bez użycia transparent_color
-    window_animation = sg.Window('Loading Animation', layout, finalize=True, no_titlebar=True,
-                                 return_keyboard_events=True, size=(800, 600))
-
-    scale = 1.0
-    direction = -0.01
-    # Rozpoczynamy animację
-    start_time = time.time()
-    while scale > 0.9:
-        event, _ = window_animation.read(timeout=10)  # Small delay to allow window events to be processed
-        if event == sg.WIN_CLOSED:
-            break
-
-        scale += direction
-        window_animation['-LOGO-'].update(size=(int(200 * scale), int(200 * scale)))  # Zmniejszamy logo
-        window_animation.refresh()
-
-        # Sprawdzamy, czy minęły 3 sekundy
-        if time.time() - start_time > 3:
-            break
-
-        time.sleep(0.05)
-
-    window_animation.close()
 
 def compute_statistics(df):
     """
@@ -340,12 +306,6 @@ layout = [
 
 window = sg.Window("DataFusion - Project", layout, resizable=True, finalize=True, size=(800, 600))
 
-# ------------------ Animate Logo ------------------ #
-threading.Thread(target=animate_logo, args=(window,)).start()
-
-window.hide()
-
-window.TKroot.after(3000, window.un_hide)
 # ------------------ Global Variables ------------------ #
 df_adult = None
 figure_canvas_agg = None
