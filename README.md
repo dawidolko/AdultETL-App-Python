@@ -2,7 +2,7 @@
 
 > **Case:** Build a powerful and user-friendly Python GUI application for real-world data analysis and machine learning. The project processes two distinct datasets: the UCI Adult Income dataset and the UCI Chronic Kidney Disease dataset, offering users a rich environment for data exploration, cleaning, transformation, and predictive modeling.
 
-> **Tech Stack:** `Python`, `PySimpleGUI`, `Pandas`, `Scikit-learn`, `Matplotlib`, `Seaborn`.
+> **Tech Stack:** `Python`, `PySimpleGUI`, `Pandas`, `Scikit-learn`, `Matplotlib`, `Seaborn`. 
 
 ---
 
