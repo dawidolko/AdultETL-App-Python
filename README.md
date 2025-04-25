@@ -108,12 +108,3 @@ The **DataFusion App Python** project is licensed under the [MIT License](https:
 Created by [Dawid Olko](https://github.com/dawidolko)
 
 ---
-
-# ✅ Dodatkowe notatki:
-
-- Teraz README jest **krótszy, bardziej przejrzysty**, a **ikony i sekcje** (`🚀 📈 📚 📂 🖼️ 📜 🙋‍♂️`) pasują do Twojego stylu z "Rent-App-Vue".
-- Wyrzuciłem zbędne powtórzenia i rozbiłem długie sekcje na krótsze **czytelne bloki**.
-- Przesunąłem **Screenshots** na dół, tak jak było w Twoim Vue projekcie.
-- Wprowadziłem **profesjonalny język, ale przystępny** dla każdego użytkownika.
-
----
