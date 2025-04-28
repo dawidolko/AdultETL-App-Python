@@ -1,0 +1,19 @@
+
+jpython:S1192œ"JDefine a constant instead of duplicating this literal "Bar Chart" 4 times.(Úó¥8“âîç2
+“python:S1192"NDefine a constant instead of duplicating this literal "Adult Dataset" 5 times.(Øöİä8©ƒØîç2J$98767899-57a6-43d2-a9c6-ed0fc106cbfe
+jpython:S1192³"JDefine a constant instead of duplicating this literal "Pie Chart" 4 times.(ê¿©Æ8“âîç2
+opython:S1192ª"JDefine a constant instead of duplicating this literal "Line Plot" 4 times.(ÃŞèÜøÿÿÿÿ8“âîç2
+€python:S1192®"`Define a constant instead of duplicating this literal "Please load the dataset first." 10 times.(Òßı÷8“âîç2
+™python:S3776"TRefactor this function to reduce its Cognitive Complexity from 18 to the 15 allowed.(€ş°Ú8ªƒØîç2J$447ccc5a-1ccc-41af-be78-cd97ef8b4db4
+ypython:S3776‹"TRefactor this function to reduce its Cognitive Complexity from 40 to the 15 allowed.(¡¸¹ûÿÿÿÿ8“âîç2
+Ypython:S3516ù"9Refactor this method to not always return the same value.(ó¯ÒÑ8“âîç2
+\python:S1481¤"7Replace the unused local variable "bin_edges" with "_".(±ÛÉûÿÿÿÿ8‘“âîç2
+tpython:S3776ù"TRefactor this function to reduce its Cognitive Complexity from 25 to the 15 allowed.(ó¯ÒÑ8‘“âîç2
+dpython:S3457À"EAdd replacement fields or use a normal string instead of an f-string.(«åÿ8‘“âîç2
+Ypython:S3516Ö"9Refactor this method to not always return the same value.(ó¯ÒÑ8‘“âîç2
+\python:S1481"7Replace the unused local variable "bin_edges" with "_".(±ÛÉûÿÿÿÿ8‘“âîç2
+tpython:S3776Ö"TRefactor this function to reduce its Cognitive Complexity from 22 to the 15 allowed.(ó¯ÒÑ8’“âîç2
+ypython:S3776¢"TRefactor this function to reduce its Cognitive Complexity from 33 to the 15 allowed.(åÙòßşÿÿÿÿ8’“âîç2
+ypython:S3776Œ"TRefactor this function to reduce its Cognitive Complexity from 19 to the 15 allowed.(¼ÌÀÖşÿÿÿÿ8’“âîç2
+vpython:S117Û"WRename this local variable "X_test" to match the regular expression ^[_a-z][a-z0-9_]*$.(ø¬õÂ8’“âîç2
+wpython:S117Û"XRename this local variable "X_train" to match the regular expression ^[_a-z][a-z0-9_]*$.(ø¬õÂ8’“âîç2

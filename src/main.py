@@ -16,6 +16,7 @@ sg.set_options(font=("Helvetica", 12))
 df = None
 figure_canvas_agg = None
 
+
 # ------------------ Helper Functions ------------------ #
 
 def load_dataset(file_name):
@@ -30,21 +31,24 @@ def load_dataset(file_name):
         try:
             df = pd.read_csv('../database/adult/adult.data', header=None, names=col_names, skipinitialspace=True)
         except Exception as e:
-            df = pd.read_csv('adult.data', header=None, names=col_names, skipinitialspace=True)
+            try:
+                df = pd.read_csv('adult.data', header=None, names=col_names, skipinitialspace=True)
+            except Exception as e2:
+                raise ValueError(f"Failed to load Adult Dataset: {e2}")
 
         df.replace('?', np.nan, inplace=True)
 
-        print("Columns and Data Types before conversion (Adult Dataset):")
-        print(df.dtypes)
-
+        # Force convert numeric columns - critical step
         numeric_cols = ['age', 'fnlwgt', 'education-num', 'capital-gain', 'capital-loss', 'hours-per-week']
         for col in numeric_cols:
-            print(f"Converting {col} to numeric...")
+            print(f"Converting {col} to numeric during dataset load...")
             df[col] = pd.to_numeric(df[col], errors='coerce')
 
-        print("Columns and Data Types after conversion (Adult Dataset):")
+        # Print data types after conversion
+        print("Column data types after loading Adult Dataset:")
         print(df.dtypes)
 
+        # Set remaining columns as categorical
         categorical_cols = ['workclass', 'education', 'marital-status', 'occupation', 'relationship',
                             'race', 'sex', 'native-country', 'income']
         for col in categorical_cols:
@@ -66,6 +70,72 @@ def load_dataset(file_name):
     return df
 
 
+def display_dataframe_in_table(df, window_key, max_rows=10):
+    """
+    Displays a DataFrame in a PySimpleGUI Table element.
+    Returns both the values and headings for the table.
+    """
+    if df is None or df.empty:
+        return [], []
+
+    # Get the headings from the DataFrame columns
+    headings = list(df.columns)
+
+    # Prepare the values - limit to max_rows if needed
+    if len(df) > max_rows:
+        display_df = df.head(max_rows)
+        footnote = f"[Showing first {max_rows} of {len(df)} rows]"
+    else:
+        display_df = df
+        footnote = ""
+
+    # Convert DataFrame to a list of lists for the table
+    values = display_df.values.tolist()
+
+    # Update the window with the table data
+    window[window_key].update(values=values)
+
+    return values, headings, footnote
+
+
+def display_correlation_matrix(window, pearson_corr, spearman_corr):
+    """
+    Displays correlation matrices in a more structured way.
+    """
+    if pearson_corr is None or spearman_corr is None:
+        window["-CORR_OUT-"].update("Not enough numeric columns for correlation.")
+        return
+
+    # Create tabs for the correlation matrices
+    correlation_layout = [
+        [sg.TabGroup([
+            [sg.Tab("Pearson Correlation", [
+                [sg.Table(
+                    values=pearson_corr.round(3).reset_index().values.tolist(),
+                    headings=["Column"] + list(pearson_corr.columns),
+                    auto_size_columns=True,
+                    justification='center',
+                    num_rows=min(25, len(pearson_corr)),
+                    key="-PEARSON_TABLE-"
+                )]
+            ]),
+             sg.Tab("Spearman Correlation", [
+                 [sg.Table(
+                     values=spearman_corr.round(3).reset_index().values.tolist(),
+                     headings=["Column"] + list(spearman_corr.columns),
+                     auto_size_columns=True,
+                     justification='center',
+                     num_rows=min(25, len(spearman_corr)),
+                     key="-SPEARMAN_TABLE-"
+                 )]
+             ])]
+        ])]
+    ]
+
+    # Create a popup with the correlation matrices
+    sg.Window("Correlation Matrices", correlation_layout, modal=True, finalize=True).read(close=True)
+
+
 def compute_statistics(df, dataset_type):
     """
     Computes statistics for both numeric and categorical columns:
@@ -74,52 +144,80 @@ def compute_statistics(df, dataset_type):
     """
     stats_data = []
 
-    numeric_cols = df.select_dtypes(include=[np.number]).columns
-    print(f"Detected numeric columns: {numeric_cols}")
+    # Explicitly identify numeric columns for Adult Dataset
+    if dataset_type == "Adult Dataset":
+        # Force these columns to be numeric
+        numeric_cols = ['age', 'fnlwgt', 'education-num', 'capital-gain', 'capital-loss', 'hours-per-week']
 
+        # Convert each column to numeric explicitly and handle errors
+        for col in numeric_cols:
+            if col in df.columns:
+                print(f"Converting {col} to numeric for stats calculation...")
+                # Make a copy to avoid SettingWithCopyWarning
+                df = df.copy()
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+
+        # Verify the conversion worked
+        print("Numeric column types after conversion:")
+        for col in numeric_cols:
+            if col in df.columns:
+                print(f"{col}: {df[col].dtype}")
+    else:
+        # For other datasets, detect numeric columns
+        numeric_cols = df.select_dtypes(include=[np.number]).columns
+
+    print(f"Computing statistics for numeric columns: {numeric_cols}")
+
+    # Process numeric columns
     for col in numeric_cols:
+        if col not in df.columns:
+            print(f"Warning: Column {col} not found in dataframe")
+            continue
+
         col_data = df[col].dropna()
-        print(f"Computing statistics for {col}...")
+        print(f"Computing statistics for {col}, found {len(col_data)} non-null values")
 
         if len(col_data) == 0:
             stats_data.append([col, None, None, None, None, None, None, None, None, None])
         else:
-            mode_val = col_data.mode()
-            mode_val = mode_val.iloc[0] if not mode_val.empty else None
+            try:
+                # Convert to numeric again to ensure calculations work
+                col_data = pd.to_numeric(col_data, errors='coerce')
+                col_data = col_data.dropna()  # Remove any NaN values after conversion
 
-            stats_data.append([col,
-                               col_data.min(),
-                               col_data.max(),
-                               round(col_data.mean(), 2),
-                               round(col_data.median(), 2),
-                               round(col_data.std(), 2),
-                               mode_val,
-                               round(col_data.var(), 2),  # Variance
-                               round(skew(col_data), 2),  # Skewness
-                               round(kurtosis(col_data), 2)  # Kurtosis
-                               ])
+                mode_val = col_data.mode()
+                mode_val = mode_val.iloc[0] if not mode_val.empty else None
 
+                # Calculate statistics safely
+                stats_data.append([col,
+                                   float(col_data.min()),
+                                   float(col_data.max()),
+                                   round(float(col_data.mean()), 2),
+                                   round(float(col_data.median()), 2),
+                                   round(float(col_data.std()), 2),
+                                   float(mode_val) if mode_val is not None else None,
+                                   round(float(col_data.var()), 2),
+                                   round(float(skew(col_data)), 2),
+                                   round(float(kurtosis(col_data)), 2)
+                                   ])
+                print(f"Successfully calculated statistics for {col}")
+            except Exception as e:
+                print(f"Error calculating statistics for {col}: {e}")
+                stats_data.append([col, None, None, None, None, None, None, None, None, None])
+
+    # Process categorical columns
     if dataset_type == "Adult Dataset":
         categorical_cols = ['workclass', 'education', 'marital-status', 'occupation', 'relationship',
                             'race', 'sex', 'native-country', 'income']
-        for col in categorical_cols:
-            if col in df.columns:
-                col_data = df[col].dropna()
-                print(f"Computing statistics for categorical column {col}...")
-                if len(col_data) == 0:
-                    stats_data.append([col, None, None, None, None, None, None])
-                else:
-                    stats_data.append([col,
-                                       col_data.value_counts().to_dict(),
-                                       col_data.mode().iloc[0] if not col_data.mode().empty else None,
-                                       ])
     else:
         categorical_cols = df.select_dtypes(include=['category', object]).columns
-        for col in categorical_cols:
+
+    for col in categorical_cols:
+        if col in df.columns:
             col_data = df[col].dropna()
             print(f"Computing statistics for categorical column {col}...")
             if len(col_data) == 0:
-                stats_data.append([col, None, None, None, None, None, None])
+                stats_data.append([col, None, None])
             else:
                 stats_data.append([col,
                                    col_data.value_counts().to_dict(),
@@ -127,6 +225,7 @@ def compute_statistics(df, dataset_type):
                                    ])
 
     return stats_data
+
 
 def compute_correlation(df):
     """
@@ -142,8 +241,10 @@ def compute_correlation(df):
 
     return pearson_corr, spearman_corr
 
+
 import seaborn as sns
 import matplotlib.pyplot as plt
+
 
 def generate_plot(df, column, chart_type):
     """
@@ -205,7 +306,8 @@ def generate_plot(df, column, chart_type):
 
     elif chart_type == "Pie Chart":
         if not pd.api.types.is_numeric_dtype(df[column]):
-            df[column].dropna().value_counts().plot(kind='pie', ax=ax, autopct='%1.1f%%', colors=sns.color_palette("Set3", len(df[column].dropna().unique())))
+            df[column].dropna().value_counts().plot(kind='pie', ax=ax, autopct='%1.1f%%',
+                                                    colors=sns.color_palette("Set3", len(df[column].dropna().unique())))
             ax.set_title(f'Pie Chart of {column}')
             ax.set_ylabel('')
         else:
@@ -223,6 +325,7 @@ def generate_plot(df, column, chart_type):
 
     plt.tight_layout()
     return fig
+
 
 def draw_figure(canvas, figure):
     """
@@ -315,47 +418,98 @@ def generate_plot(df, column, chart_type):
 def extract_subtable(df, row_indices=None, col_indices=None, keep=False):
     """
     Extract a subtable from the dataframe based on the rows and columns provided by the user.
-
-    Parameters:
-    - row_indices: List of row indices to keep/remove (can be integers or column names).
-    - col_indices: List of column indices or column names to keep/remove.
-    - keep: Boolean flag indicating whether to keep (True) or remove (False) the specified rows/columns.
-
-    Returns:
-    - A DataFrame with the extracted subtable, or None if invalid.
     """
     if df is None:
         return None
 
+    # Create a copy to avoid modifying the original
+    result_df = df.copy()
+
+    # Add debug prints
+    print(f"Original dataframe has {len(df)} rows and {len(df.columns)} columns")
+    print(f"Keep mode: {keep}")
+
     if row_indices is not None:
-        if isinstance(row_indices[0], str):
-            row_indices = [df.index.get_loc(r) if r in df.index else r for r in row_indices]
-        invalid_rows = [r for r in row_indices if not isinstance(r, int) or r not in df.index]
-        if invalid_rows:
-            sg.popup(f"Invalid rows: {invalid_rows}. Please enter valid row indices.")
+        # Try to convert string indices to integers
+        try:
+            # Print raw input for debugging
+            print(f"Raw row indices: {row_indices}")
+
+            # Convert strings to integers if possible
+            processed_indices = []
+            for r in row_indices:
+                if isinstance(r, str) and r.isdigit():
+                    processed_indices.append(int(r))
+                else:
+                    processed_indices.append(r)
+
+            row_indices = processed_indices
+            print(f"Processed row indices: {row_indices}")
+
+            # Check if indices are valid
+            valid_indices = [idx for idx in row_indices if isinstance(idx, int) and 0 <= idx < len(result_df)]
+            print(f"Valid row indices: {valid_indices}")
+
+            if not valid_indices:
+                print("No valid row indices found!")
+                sg.popup("No valid row indices found. Please enter values between 0 and " + str(len(result_df) - 1))
+                return None
+
+            if keep:
+                # Keep only specified rows
+                print(f"Keeping rows at indices: {valid_indices}")
+                result_df = result_df.iloc[valid_indices, :]
+            else:
+                # Remove specified rows
+                print(f"Removing rows at indices: {valid_indices}")
+                result_df = result_df.drop(result_df.index[valid_indices])
+
+            print(f"After row operation, dataframe has {len(result_df)} rows")
+
+        except Exception as e:
+            print(f"Error processing row indices: {e}")
+            sg.popup(f"Error processing row indices: {e}")
             return None
 
     if col_indices is not None:
-        if isinstance(col_indices[0], str):
-            col_indices = [df.columns.get_loc(c) if c in df.columns else c for c in col_indices]
-        invalid_cols = [c for c in col_indices if not isinstance(c, int) or c not in range(len(df.columns))]
-        if invalid_cols:
-            sg.popup(f"Invalid columns: {invalid_cols}. Please enter valid column indices or names.")
+        # Similar processing for column indices...
+        try:
+            print(f"Raw column indices: {col_indices}")
+
+            # Process column indices
+            col_names = []
+            for c in col_indices:
+                if isinstance(c, int) and 0 <= c < len(result_df.columns):
+                    col_names.append(result_df.columns[c])
+                elif isinstance(c, str) and c in result_df.columns:
+                    col_names.append(c)
+
+            print(f"Valid column names: {col_names}")
+
+            if not col_names:
+                print("No valid column indices found!")
+                sg.popup("No valid column indices or names found.")
+                return None
+
+            if keep:
+                # Keep only specified columns
+                print(f"Keeping columns: {col_names}")
+                result_df = result_df[col_names]
+            else:
+                # Remove specified columns
+                print(f"Removing columns: {col_names}")
+                result_df = result_df.drop(columns=col_names)
+
+            print(f"After column operation, dataframe has {len(result_df.columns)} columns")
+
+        except Exception as e:
+            print(f"Error processing column indices: {e}")
+            sg.popup(f"Error processing column indices: {e}")
             return None
 
-    if row_indices is not None:
-        if keep:
-            df = df.iloc[row_indices, :]
-        else:
-            df = df.drop(df.index[row_indices])
+    print(f"Final dataframe has {len(result_df)} rows and {len(result_df.columns)} columns")
+    return result_df
 
-    if col_indices is not None:
-        if keep:
-            df = df.iloc[:, col_indices]
-        else:
-            df = df.drop(df.columns[col_indices], axis=1)
-
-    return df
 
 def remove_columns(df, cols_to_remove):
     """
@@ -366,27 +520,54 @@ def remove_columns(df, cols_to_remove):
             df = df.drop(columns=c)
     return df
 
+
 def replace_values(df, column, old_value, new_value):
     """
     Replace specific value in the column with the new value.
     Handles both regular columns and categorical columns.
     """
     if column not in df.columns:
-        sg.popup(f"Column '{column}' does not exist!")
+        sg.popup(f"Kolumna '{column}' nie istnieje!")
         return df
 
-    if isinstance(df[column].dtype, pd.CategoricalDtype):
+    # Tworzenie kopii, aby uniknąć modyfikacji oryginalnego DataFrame przez referencję
+    df = df.copy()
+
+    # Sprawdź typ danych kolumny
+    if pd.api.types.is_numeric_dtype(df[column]):
+        # Dla kolumn numerycznych, konwertuj wartości do odpowiedniego typu
+        try:
+            old_value_numeric = float(old_value) if '.' in old_value else int(old_value)
+            new_value_numeric = float(new_value) if '.' in new_value else int(new_value)
+
+            # Zastąp wartości z uwzględnieniem tolerancji dla wartości zmiennoprzecinkowych
+            if isinstance(old_value_numeric, float):
+                mask = np.isclose(df[column], old_value_numeric)
+                df.loc[mask, column] = new_value_numeric
+            else:
+                df.loc[df[column] == old_value_numeric, column] = new_value_numeric
+
+            # Wydrukuj dla debugowania
+            print(f"Zastąpiono '{old_value_numeric}' przez '{new_value_numeric}' w kolumnie '{column}'")
+
+        except ValueError:
+            sg.popup(f"Błąd konwersji wartości dla kolumny numerycznej '{column}'")
+            return df
+
+    elif isinstance(df[column].dtype, pd.CategoricalDtype):
+        # Dla kolumn kategorycznych
         if old_value in df[column].cat.categories:
             if new_value not in df[column].cat.categories:
-                df[column] = df[column].cat.set_categories(list(df[column].cat.categories) + [new_value])
+                df[column] = df[column].cat.add_categories([new_value])
             df[column] = df[column].replace(old_value, new_value)
         else:
-            sg.popup(f"Old value '{old_value}' not found in categorical column '{column}'.")
-            return df
+            sg.popup(f"Stara wartość '{old_value}' nie znaleziona w kategorycznej kolumnie '{column}'.")
     else:
+        # Dla innych typów kolumn (string, itd.)
         df[column] = df[column].replace(old_value, new_value)
 
     return df
+
 
 def replace_all_values(df, column, new_value):
     """
@@ -435,32 +616,52 @@ def handle_missing_values(df, strategy):
                     df.loc[:, col] = df[col].fillna(mode_val.iloc[0])
     return df
 
+
 def remove_duplicates(df):
     """
     Removes duplicate rows from the dataframe.
     """
     return df.drop_duplicates()
 
+
 def one_hot_encoding(df, column):
     """
     Perform One-Hot Encoding on the specified column.
     """
-    return pd.get_dummies(df, columns=[column], drop_first=True)
+    if column not in df.columns:
+        raise ValueError(f"Column '{column}' not found in the dataframe")
+
+    # Create dummy variables and join with original df
+    dummies = pd.get_dummies(df[column], prefix=column, drop_first=True)
+    result_df = pd.concat([df.drop(columns=[column]), dummies], axis=1)
+    return result_df
+
 
 def binary_encoding(df, column):
     """
     Perform Binary Encoding on the specified column using category codes.
     """
+    if column not in df.columns:
+        raise ValueError(f"Column '{column}' not found in the dataframe")
+
+    # Convert to category if it's not already
+    df = df.copy()
     df[column] = df[column].astype('category')
-    df[column] = df[column].cat.codes
+    df[f"{column}_encoded"] = df[column].cat.codes
     return df
+
 
 def target_encoding(df, column, target):
     """
     Perform Target Encoding on the specified column using the target column.
     """
-    encoding_map = df.groupby(column)[target].mean()
-    df[column] = df[column].map(encoding_map)
+    if column not in df.columns or target not in df.columns:
+        raise ValueError(f"Column '{column}' or target '{target}' not found in the dataframe")
+
+    # Calculate mean target value for each category
+    df = df.copy()
+    encoding_map = df.groupby(column)[target].mean().to_dict()
+    df[f"{column}_target_encoded"] = df[column].map(encoding_map)
     return df
 
 
@@ -475,15 +676,25 @@ def scale_columns(df, cols, method='standard'):
     chosen_cols = [c for c in cols if c in numeric_cols]
 
     if not chosen_cols:
-        raise ValueError("No valid numeric columns selected.")
+        raise ValueError("No valid numeric columns selected. Please select from: " + ", ".join(numeric_cols))
 
+    # Create a copy to avoid modifying the original data
+    df_copy = df.copy()
+
+    # Handle any NaN values before scaling
+    for col in chosen_cols:
+        df_copy[col] = df_copy[col].fillna(df_copy[col].mean())
+
+    # Perform scaling
     scaler = StandardScaler() if method == 'standard' else MinMaxScaler()
 
-    scaled_values = scaler.fit_transform(df[chosen_cols])
+    try:
+        scaled_values = scaler.fit_transform(df_copy[chosen_cols])
+        df_copy.loc[:, chosen_cols] = scaled_values
+        return df_copy
+    except Exception as e:
+        raise ValueError(f"Scaling error: {str(e)}")
 
-    df.loc[:, chosen_cols] = scaled_values.astype('float64')
-
-    return df
 
 def add_symbolic_column(df):
     """
@@ -570,15 +781,14 @@ tab1_layout = [
     [sg.Button("Compute Stats", key="-STATS-"), sg.Button("Correlation", key="-CORR-")],
 
     [sg.Text("Numeric Columns Statistics:")],
-    [sg.Table(values=[], headings=["Column", "Min", "Max", "Mean", "Median", "Std", "Mode", "Variance", "Skewness", "Kurtosis"],
-              key="-NUMERIC_STATS-", auto_size_columns=True, justification='center', expand_x=True, expand_y=True)],
+    [sg.Table(values=[],
+              headings=["Column", "Min", "Max", "Mean", "Median", "Std", "Mode", "Variance", "Skewness", "Kurtosis"],
+              key="-NUMERIC_STATS-", auto_size_columns=True, justification='center', expand_x=True, expand_y=False)],
 
     [sg.Text("Categorical Columns Statistics:")],
     [sg.Table(values=[], headings=["Column", "Value Counts", "Mode"],
-              key="-CATEGORICAL_STATS-", auto_size_columns=True, justification='center', expand_x=True, expand_y=True)],
-
-    [sg.Text("Correlation Results:")],
-    [sg.Multiline(size=(100, 10), key="-CORR_OUT-", disabled=True)]
+              key="-CATEGORICAL_STATS-", auto_size_columns=True, justification='center', expand_x=True,
+              expand_y=False)],
 ]
 
 # Tab 2: Extract Subtable
@@ -596,7 +806,11 @@ tab2_layout = [
 
     [sg.Button("Extract Subtable", key="-EXTRACT_BTN-")],
 
-    [sg.Multiline(size=(1200, 8), key="-EXTRACT_OUT-", disabled=True)],
+    # Updated output element with horizontal scrolling
+    [sg.Text("Extracted Subtable:")],
+    [sg.Table(values=[], headings=[], key="-EXTRACT_TABLE-", auto_size_columns=True,
+              justification='center', expand_x=True, num_rows=10)],
+    [sg.Text("", key="-EXTRACT_FOOTNOTE-", font=("Helvetica", 10, "italic"))],
 
     [sg.Text("Replacement: Enter the column name and values to replace.")],
 
@@ -630,8 +844,10 @@ tab3_layout = [
     [sg.Button("Apply Scaling", key="-APPLY_SCALING-")],
 
     [sg.Text("Scaled Data Preview:")],
-    [sg.Table(values=[], headings=[], key="-SCALED_DATA-", auto_size_columns=True, justification='center',
-              expand_x=True, expand_y=True)],
+    [sg.Text("Scaled Data Preview:")],
+    [sg.Table(values=[], headings=[], key="-SCALED_TABLE-", auto_size_columns=True,
+              justification='center', expand_x=True, num_rows=10)],
+    [sg.Text("", key="-SCALED_FOOTNOTE-", font=("Helvetica", 10, "italic"))],
 
     [sg.HorizontalSeparator()],
 
@@ -669,7 +885,10 @@ tab4_layout = [
     [sg.Button("Apply Encoding", key="-APPLY_ENCODING-")],
 
     [sg.Text("Data Preview (After Cleaning and Encoding):")],
-    [sg.Multiline(size=(80, 10), key="-CLEANED_DATA-", disabled=True)]
+    [sg.Text("Data Preview (After Cleaning and Encoding):")],
+    [sg.Table(values=[], headings=[], key="-CLEANED_TABLE-", auto_size_columns=True,
+              justification='center', expand_x=True, num_rows=10)],
+    [sg.Text("", key="-CLEANED_FOOTNOTE-", font=("Helvetica", 10, "italic"))],
 ]
 
 background_color = '#64778d'
@@ -680,12 +899,16 @@ layout = [
     [sg.Column([
         [sg.TabGroup([[
             sg.Tab("Creators & Info", tab0_layout, expand_x=True, expand_y=True, background_color=background_color),
-            sg.Tab("Data & Stats", tab1_layout, expand_x=True, expand_y=True, background_color=background_color),
-            sg.Tab("Replacement & Subtable", tab2_layout, expand_x=True, expand_y=True, background_color=background_color),
-            sg.Tab("Scaling & Visualization", tab3_layout, expand_x=True, expand_y=True, background_color=background_color),
-            sg.Tab("Data Cleaning & Transformation", tab4_layout, expand_x=True, expand_y=True, background_color=background_color)
-        ]], tab_location='top', font=("Helvetica", 14, "bold"), expand_x=True, expand_y=True, key='-TABGROUP-', size=(1200, 800))]
-    ], scrollable=True, vertical_scroll_only=True, expand_x=True, expand_y=True)]
+            sg.Tab("Data & Stats", tab1_layout, expand_x=True, expand_y=False, background_color=background_color),
+            sg.Tab("Replacement & Subtable", tab2_layout, expand_x=True, expand_y=True,
+                   background_color=background_color),
+            sg.Tab("Scaling & Visualization", tab3_layout, expand_x=True, expand_y=True,
+                   background_color=background_color),
+            sg.Tab("Data Cleaning & Transformation", tab4_layout, expand_x=True, expand_y=True,
+                   background_color=background_color)
+        ]], tab_location='top', font=("Helvetica", 14, "bold"), expand_x=True, expand_y=True, key='-TABGROUP-',
+            size=(1200, 1200))]
+    ], scrollable=True, vertical_scroll_only=True, expand_x=True, expand_y=False)]
 ]
 
 window = sg.Window("DataFusion - Project", layout, resizable=True, finalize=True, element_justification='center')
@@ -705,37 +928,90 @@ while True:
             df = load_dataset(selected_file)
             window["-DATA_INFO-"].update("Dataset loaded with columns: " + ", ".join(df.columns))
             window["-PLOT_SELECT-"].update(values=list(df.columns), value=list(df.columns)[0])
+            window["-ENCODE_COL-"].update(values=list(df.columns))
+            window["-TARGET_COL-"].update(values=list(df.columns))
             sg.popup("Dataset loaded successfully!", keep_on_top=True)
         except Exception as e:
             sg.popup(f"Error loading dataset: {e}", keep_on_top=True)
 
+
     elif event == "-STATS-":
+
         if df is None:
+
             sg.popup("Please load the dataset first.")
+
         else:
-            dataset_type = values["-SELECT_FILE-"]
 
-            stats_data = compute_statistics(df, dataset_type)
+            try:
 
-            numeric_stats = [stat for stat in stats_data if isinstance(stat[1], (int, float))]
-            categorical_stats = [stat for stat in stats_data if isinstance(stat[1], dict)]  # For categorical stats
+                dataset_type = values["-SELECT_FILE-"]
 
-            window["-NUMERIC_STATS-"].update(values=numeric_stats)
-            window["-CATEGORICAL_STATS-"].update(values=categorical_stats)
+                # Print data types before calculation
+
+                print("Data types before statistics calculation:")
+
+                print(df.dtypes)
+
+                stats_data = compute_statistics(df, dataset_type)
+
+                # Separate numeric and categorical stats
+
+                numeric_stats = []
+
+                categorical_stats = []
+
+                for stat in stats_data:
+
+                    # Check if this is a numeric stat (has at least 2 numeric values)
+
+                    if len(stat) > 2 and isinstance(stat[1], (int, float)) and isinstance(stat[2], (int, float)):
+
+                        numeric_stats.append(stat)
+
+                    elif len(stat) <= 3:  # Categorical stats have 3 or fewer items
+
+                        categorical_stats.append(stat)
+
+                print(f"Found {len(numeric_stats)} numeric stats and {len(categorical_stats)} categorical stats")
+
+                window["-NUMERIC_STATS-"].update(values=numeric_stats)
+
+                window["-CATEGORICAL_STATS-"].update(values=categorical_stats)
+
+                if not numeric_stats:
+                    sg.popup("Warning: No numeric statistics were calculated. Check console for details.")
+
+
+            except Exception as e:
+
+                print(f"Error calculating statistics: {e}")
+
+                import traceback
+
+                traceback.print_exc()
+
+                sg.popup(f"Error calculating statistics: {str(e)}")
+
+
 
     elif event == "-CORR-":
+
         if df is None:
+
             sg.popup("Please load the dataset first.")
+
         else:
+
             pearson_corr, spearman_corr = compute_correlation(df)
 
             if pearson_corr is None or spearman_corr is None:
-                    window["-CORR_OUT-"].update("Not enough numeric columns for correlation.")
-            else:
-                pearson_str = f"Pearson Correlation:\n{pearson_corr.to_string()}\n\n"
-                spearman_str = f"Spearman Correlation:\n{spearman_corr.to_string()}"
 
-                window["-CORR_OUT-"].update(pearson_str + spearman_str)
+                sg.popup("Not enough numeric columns for correlation.")
+
+            else:
+
+                display_correlation_matrix(window, pearson_corr, spearman_corr)
 
     # Tab 2: Cleaning & Subtable
     elif event == "-EXTRACT_BTN-":
@@ -743,63 +1019,161 @@ while True:
             sg.popup("Please load the dataset first.")
         else:
             try:
+                # Get input and remove whitespace
                 row_input = values["-ROW_INPUT-"].strip()
                 col_input = values["-COL_INPUT-"].strip()
 
-                if row_input:
-                    row_indices = [int(i) if i.isdigit() else i for i in row_input.split(",")]
-                else:
-                    row_indices = None
+                # Debug prints
+                print(f"Row input: '{row_input}'")
+                print(f"Column input: '{col_input}'")
 
+                # Parse row indices
+                row_indices = None
+                if row_input:
+                    # Split by comma and strip whitespace from each part
+                    row_indices = [part.strip() for part in row_input.split(",") if part.strip()]
+                    # Convert to integers if possible
+                    row_indices = [int(i) if i.isdigit() else i for i in row_indices]
+                    print(f"Parsed row indices: {row_indices}")
+
+                # Parse column indices
+                col_indices = None
                 if col_input:
-                    col_indices = [int(i) if i.isdigit() else i for i in col_input.split(",")]
-                else:
-                    col_indices = None
+                    col_indices = [part.strip() for part in col_input.split(",") if part.strip()]
+                    col_indices = [int(i) if i.isdigit() else i for i in col_indices]
+                    print(f"Parsed column indices: {col_indices}")
 
                 keep = values["-KEEP_EXTRACT-"]
+                print(f"Keep mode: {keep}")
 
+                # Extract subtable
                 sub_df = extract_subtable(df, row_indices, col_indices, keep)
 
                 if sub_df is None or sub_df.empty:
-                    window["-EXTRACT_OUT-"].update("Invalid range or empty subtable.")
+                    window["-EXTRACT_FOOTNOTE-"].update("Invalid range or empty subtable.")
+                    window["-EXTRACT_TABLE-"].update(values=[], headings=[])
                 else:
-                    window["-EXTRACT_OUT-"].update(sub_df.to_string())
+                    # Display result in table
+                    values, headings, footnote = display_dataframe_in_table(sub_df, "-EXTRACT_TABLE-", max_rows=10)
+                    window["-EXTRACT_TABLE-"].update(values=values, headings=headings)
+                    window["-EXTRACT_FOOTNOTE-"].update(footnote)
             except Exception as e:
+                print(f"Error in subtable extraction: {e}")
+                import traceback
+
+                traceback.print_exc()
                 sg.popup(f"Error extracting subtable: {e}")
 
+
+
     elif event == "-REPLACE_BTN-":
+
         if df is None:
+
             sg.popup("Please load the dataset first.")
+
         else:
+
             col_to_replace = values["-REPLACE_COL-"]
+
             old_value = values["-OLD_VAL-"]
+
             new_value = values["-NEW_VAL-"]
 
             if not col_to_replace or not old_value or not new_value:
+
                 sg.popup("Please fill in all fields for column, old value, and new value.")
+
             else:
+
                 try:
+
+                    # Keep a copy of the original DataFrame
+
+                    original_df = df.copy()
+
+                    # Apply the replace function
+
                     df = replace_values(df, col_to_replace, old_value, new_value)
-                    window["-EXTRACT_OUT-"].update(
-                        f"Replaced '{old_value}' with '{new_value}' in column '{col_to_replace}'")
+
+                    # Check if changes were made
+
+                    changes_made = not df[col_to_replace].equals(original_df[col_to_replace])
+
+                    if changes_made:
+
+                        sg.popup(f"Replaced '{old_value}' with '{new_value}' in column '{col_to_replace}'")
+
+                        # Display updated data in table
+
+                        values, headings, footnote = display_dataframe_in_table(df, "-EXTRACT_TABLE-", max_rows=10)
+
+                        window["-EXTRACT_TABLE-"].update(values=values, headings=headings)
+
+                        window["-EXTRACT_FOOTNOTE-"].update(footnote)
+
+                    else:
+
+                        window["-EXTRACT_FOOTNOTE-"].update(
+
+                            f"No value '{old_value}' found in column '{col_to_replace}' to replace."
+
+                        )
+
                 except Exception as e:
+
                     sg.popup(f"Error replacing values: {e}")
 
+
+
     elif event == "-REPLACE_ALL_BTN-":
+
         if df is None:
+
             sg.popup("Please load the dataset first.")
+
         else:
+
             col_to_replace_all = values["-ALL_REPLACE_COL-"]
+
             new_value_all = values["-ALL_NEW_VAL-"]
 
             if not col_to_replace_all or not new_value_all:
+
                 sg.popup("Please fill in all fields for column and new value.")
+
             else:
+
                 try:
-                    df = replace_all_values(df, col_to_replace_all, new_value_all)
-                    window["-EXTRACT_OUT-"].update(
-                        f"Replaced all values in column '{col_to_replace_all}' with '{new_value_all}'")
+
+                    # Check if the column exists in the dataframe
+
+                    if col_to_replace_all in df.columns:
+
+                        # Apply the replace_all_values function
+
+                        df = replace_all_values(df, col_to_replace_all, new_value_all)
+
+                        sg.popup(f"Replaced all values in column '{col_to_replace_all}' with '{new_value_all}'")
+
+                        # Display updated data in table
+
+                        values, headings, footnote = display_dataframe_in_table(df, "-EXTRACT_TABLE-", max_rows=10)
+
+                        window["-EXTRACT_TABLE-"].update(values=values, headings=headings)
+
+                        window["-EXTRACT_FOOTNOTE-"].update(footnote)
+
+                    else:
+
+                        window["-EXTRACT_FOOTNOTE-"].update(
+
+                            f"Column '{col_to_replace_all}' does not exist in the dataframe."
+
+                        )
+
                 except Exception as e:
+
                     sg.popup(f"Error replacing all values: {e}")
 
     # Tab 3: Scaling & Visualization
@@ -810,19 +1184,30 @@ while True:
             cols_str = values["-SCALE_COLS-"]
             cols_list = [c.strip() for c in cols_str.split(",") if c.strip() != ""]  # Clean the input
 
+            if not cols_list:
+                sg.popup("Please enter column names to scale, separated by commas.")
+                continue
+
             method = "standard" if values["-STD_SCALER-"] else "minmax"
 
             try:
-                df = scale_columns(df, cols_list, method=method)
+                # Create a copy to avoid modifying the original dataframe directly
+                scaled_df = scale_columns(df, cols_list, method=method)
 
-                scaled_data = df[cols_list].head(10).values.tolist()
-                window["-SCALED_DATA-"].update(values=scaled_data, headings=cols_list)
+                # Update the original dataframe with the scaled values
+                for col in cols_list:
+                    if col in scaled_df.columns and col in df.columns:
+                        df[col] = scaled_df[col]
 
-                sg.popup(f"Applied {method} scaling to columns: {cols_list}")
+                # Display scaled data in table format
+                values, headings, footnote = display_dataframe_in_table(df[cols_list], "-SCALED_TABLE-", max_rows=10)
+                window["-SCALED_TABLE-"].update(values=values, headings=headings)
+                window["-SCALED_FOOTNOTE-"].update(footnote)
 
-                window["-PLOT_SELECT-"].update(values=list(df.columns), value=list(df.columns)[0])
+                # Show confirmation message
+                sg.popup(f"Applied {method} scaling to columns: {', '.join(cols_list)}")
             except Exception as e:
-                sg.popup(f"Error scaling columns: {e}")
+                sg.popup(f"Error scaling columns: {str(e)}")
 
     elif event == "-PLOT_BTN-":
         if df is None:
@@ -859,39 +1244,102 @@ while True:
             try:
                 df = handle_missing_values(df, strategy)
                 sg.popup(f"Missing values handled with strategy: {strategy}")
-                window["-CLEANED_DATA-"].update(df.head().to_string())
+
+                # Display updated data in table
+                values, headings, footnote = display_dataframe_in_table(df, "-CLEANED_TABLE-", max_rows=10)
+                window["-CLEANED_TABLE-"].update(values=values, headings=headings)
+                window["-CLEANED_FOOTNOTE-"].update(footnote)
             except Exception as e:
                 sg.popup(f"Error handling missing values: {e}")
 
+
     elif event == "-REMOVE_DUPLICATES-":
+
         if df is None:
+
             sg.popup("Please load the dataset first.")
+
         else:
+
             try:
+
                 df = remove_duplicates(df)
+
                 sg.popup("Duplicate rows removed successfully.")
-                window["-CLEANED_DATA-"].update(df.head().to_string())
+
+                # Display updated data in table
+
+                values, headings, footnote = display_dataframe_in_table(df, "-CLEANED_TABLE-", max_rows=10)
+
+                window["-CLEANED_TABLE-"].update(values=values, headings=headings)
+
+                window["-CLEANED_FOOTNOTE-"].update(footnote)
+
             except Exception as e:
+
                 sg.popup(f"Error removing duplicates: {e}")
 
-    elif event == "-APPLY_ENCODING-":
-        if df is None:
-            sg.popup("Please load the dataset first.")
-        else:
-            column = values["-ENCODE_COL-"]
-            if values["-ONE_HOT-"]:
-                df = one_hot_encoding(df, column)
-                sg.popup(f"One-Hot Encoding applied to column: {column}")
-            elif values["-BINARY_ENCODE-"]:
-                df = binary_encoding(df, column)
-                sg.popup(f"Binary Encoding applied to column: {column}")
-            elif values["-TARGET_ENCODE-"]:
-                target_column = values["-TARGET_COL-"]
-                if target_column == "":
-                    sg.popup("Please select a target column for Target Encoding.")
-                else:
-                    df = target_encoding(df, column, target_column)
-                    sg.popup(f"Target Encoding applied to column: {column} using target column: {target_column}")
-            window["-CLEANED_DATA-"].update(df.head().to_string())
 
-            window.close()
+
+    elif event == "-APPLY_ENCODING-":
+
+        if df is None:
+
+            sg.popup("Please load the dataset first.")
+
+        else:
+
+            column = values["-ENCODE_COL-"]
+
+            if not column:
+                sg.popup("Please select a column to encode")
+
+                continue
+
+            try:
+
+                if values["-ONE_HOT-"]:
+
+                    df = one_hot_encoding(df, column)
+
+                    sg.popup(f"One-Hot Encoding applied to column: {column}")
+
+                elif values["-BINARY_ENCODE-"]:
+
+                    df = binary_encoding(df, column)
+
+                    sg.popup(f"Binary Encoding applied to column: {column}")
+
+                elif values["-TARGET_ENCODE-"]:
+
+                    target_column = values["-TARGET_COL-"]
+
+                    if not target_column:
+
+                        sg.popup("Please select a target column for Target Encoding.")
+
+                    else:
+
+                        df = target_encoding(df, column, target_column)
+
+                        sg.popup(f"Target Encoding applied to column: {column} using target column: {target_column}")
+
+                # Update UI elements that might display columns
+
+                window["-PLOT_SELECT-"].update(values=list(df.columns), value=list(df.columns)[0])
+
+                window["-ENCODE_COL-"].update(values=list(df.columns))
+
+                window["-TARGET_COL-"].update(values=list(df.columns))
+
+                # Show preview of transformed data in table
+
+                values, headings, footnote = display_dataframe_in_table(df, "-CLEANED_TABLE-", max_rows=10)
+
+                window["-CLEANED_TABLE-"].update(values=values, headings=headings)
+
+                window["-CLEANED_FOOTNOTE-"].update(footnote)
+
+            except Exception as e:
+
+                sg.popup(f"Error applying encoding: {str(e)}")
