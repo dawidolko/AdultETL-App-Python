@@ -93,7 +93,7 @@ DataFusion-App-Python/
 
 ## 🖼️ Screenshots
 
-[<img src="src/assets/screen-app.png" width="80%"/>](src/assets/screen-app.png)
+[<img src="src/assets/screen-app.png" width="80%"/>](src/assets/screen-app.png) 
 
 ---
 
