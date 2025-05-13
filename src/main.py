@@ -2,22 +2,16 @@ import PySimpleGUI as sg
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import seaborn as sns
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from sklearn.preprocessing import StandardScaler, MinMaxScaler, LabelEncoder
-from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LogisticRegression
-from sklearn.cluster import KMeans
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from scipy.stats import kurtosis, skew
-import os
-import tkinter as tk
 from tkinter import filedialog
 
 # ------------------ Global GUI Settings ------------------ #
 
 sg.set_options(font=("Helvetica", 12))
 df = None
-original_df = None  # Dodane do przechowywania oryginalnej wersji danych
+original_df = None
 figure_canvas_agg = None
 
 
@@ -135,7 +129,6 @@ def load_dataset(file_path=None, is_predefined=True):
                         column_names.append(f"col_{first_letter}{second_letter}")
                 df.columns = column_names
 
-            # Zastąp wartości "?" wartościami NaN
             df.replace('?', np.nan, inplace=True)
 
             for col in df.columns:
@@ -151,7 +144,6 @@ def load_dataset(file_path=None, is_predefined=True):
             traceback.print_exc()
             raise ValueError(f"Error loading custom CSV file: {e}")
 
-        # Zachowaj oryginalną wersję DataFrame
     original_df = df.copy(deep=True)
     return df
 
@@ -191,9 +183,11 @@ def save_dataframe_to_csv(df, include_index=False, include_header=True, index_la
 
 
 def create_save_options_window(title="Save Options"):
+    unique_suffix = f"_{id(title)}_{title}"
+
     save_layout = [
-        [sg.Checkbox("Include Row Indices", default=False, key=f"-SAVE_INCLUDE_INDEX-{title}")],
-        [sg.Checkbox("Include Column Headers", default=True, key=f"-SAVE_INCLUDE_HEADER-{title}")],
+        [sg.Checkbox("Include Row Indices", default=False, key=f"-SAVE_INCLUDE_INDEX{unique_suffix}")],
+        [sg.Checkbox("Include Column Headers", default=True, key=f"-SAVE_INCLUDE_HEADER{unique_suffix}")],
         [sg.Button("Save", key="-CONFIRM_SAVE-"), sg.Button("Cancel", key="-CANCEL_SAVE-")]
     ]
 
@@ -222,7 +216,7 @@ def save_plot_as_image(fig, default_filename="plot.png"):
                                       default_extension=".png",
                                       default_path=default_filename)
 
-        if not file_path:  # User cancelled
+        if not file_path:
             return False
 
         if not any(file_path.lower().endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.pdf', '.svg']):
@@ -323,7 +317,24 @@ def compute_correlation(df):
     return pearson_corr, spearman_corr
 
 
-def generate_plot(df, column, chart_type):
+def generate_plot(df, column, chart_type, options):
+    show_values = options.get("show_values", True)
+    show_grid = options.get("show_grid", True)
+    label_size = options.get("label_size", 9)
+    chart_title = options.get("chart_title", f"{chart_type} of {column}")
+    color_theme = options.get("color_theme", "Default")
+
+    if color_theme == "Pastel":
+        colors = plt.cm.Pastel1.colors
+    elif color_theme == "Dark":
+        colors = plt.cm.Dark2.colors
+    elif color_theme == "Colorblind":
+        colors = plt.cm.tab10.colors
+    elif color_theme == "Grayscale":
+        colors = plt.cm.Greys(np.linspace(0.3, 0.9, 10))
+    else:
+        colors = plt.cm.Set3.colors
+
     fig, ax = plt.subplots(figsize=(8, 6))
 
     if column not in df.columns:
@@ -332,26 +343,36 @@ def generate_plot(df, column, chart_type):
 
     plt.subplots_adjust(top=0.85)
 
+    if show_grid:
+        ax.grid(True, linestyle='--', alpha=0.7)
+    else:
+        ax.grid(False)
+
+    if chart_title:
+        ax.set_title(chart_title)
+    else:
+        ax.set_title(f'{chart_type} of {column}')
+
     if chart_type == "Histogram":
         if pd.api.types.is_numeric_dtype(df[column]):
             values = df[column].dropna()
-            n, bins, patches = ax.hist(values, bins=20, color='skyblue', edgecolor='black')
+            n, bins, patches = ax.hist(values, bins=20, color=colors[0], edgecolor='black')
 
-            y_max = max(n) * 1.1
-            ax.set_ylim(0, y_max)
+            if show_values:
+                y_max = max(n) * 1.1
+                ax.set_ylim(0, y_max)
 
-            for i in range(len(n)):
-                if n[i] > 0:
-                    x_pos = (bins[i] + bins[i + 1]) / 2
-                    y_pos = n[i] + (y_max * 0.02)
+                for i in range(len(n)):
+                    if n[i] > 0:
+                        x_pos = (bins[i] + bins[i + 1]) / 2
+                        y_pos = n[i] + (y_max * 0.02)
 
-                    ax.text(x_pos, y_pos, f'{int(n[i])}',
-                            ha='center', va='bottom',
-                            fontsize=9, fontweight='bold',
-                            bbox=dict(facecolor='white', edgecolor='black', alpha=0.7,
-                                      boxstyle='round,pad=0.2'))
+                        ax.text(x_pos, y_pos, f'{int(n[i])}',
+                                ha='center', va='bottom',
+                                fontsize=label_size, fontweight='bold',
+                                bbox=dict(facecolor='white', edgecolor='black', alpha=0.7,
+                                          boxstyle='round,pad=0.2'))
 
-            ax.set_title(f'Histogram of {column}')
             ax.set_xlabel(column)
             ax.set_ylabel('Frequency')
 
@@ -361,87 +382,87 @@ def generate_plot(df, column, chart_type):
 
         else:
             counts = df[column].dropna().value_counts()
-            bars = counts.plot(kind='bar', ax=ax, color='orange', edgecolor='black')
+            bars = counts.plot(kind='bar', ax=ax, color=colors[0], edgecolor='black')
 
-            y_max = max(counts) * 1.1
-            ax.set_ylim(0, y_max)
+            if show_values:
+                y_max = max(counts) * 1.1
+                ax.set_ylim(0, y_max)
 
-            for i, v in enumerate(counts):
-                ax.text(i, v + (y_max * 0.02), f'{v}',
-                        ha='center', va='bottom',
-                        fontsize=9, fontweight='bold',
-                        bbox=dict(facecolor='white', edgecolor='black', alpha=0.7,
-                                  boxstyle='round,pad=0.2'))
+                for i, v in enumerate(counts):
+                    ax.text(i, v + (y_max * 0.02), f'{v}',
+                            ha='center', va='bottom',
+                            fontsize=label_size, fontweight='bold',
+                            bbox=dict(facecolor='white', edgecolor='black', alpha=0.7,
+                                      boxstyle='round,pad=0.2'))
 
-            ax.set_title(f'Bar Chart of {column}')
             ax.set_xlabel(column)
             ax.set_ylabel('Count')
-
 
     elif chart_type == "Boxplot":
         if pd.api.types.is_numeric_dtype(df[column]):
             values = df[column].dropna()
-            # Tworzenie boxplota
             boxplot = ax.boxplot(values, patch_artist=True)
 
             for box in boxplot['boxes']:
-                box.set(facecolor='skyblue')
-            # Dodanie statystyk
-            quartiles = values.quantile([0.25, 0.5, 0.75])
-            iqr = quartiles[0.75] - quartiles[0.25]
-            whisker_min = values[values >= quartiles[0.25] - 1.5 * iqr].min()
-            whisker_max = values[values <= quartiles[0.75] + 1.5 * iqr].max()
+                box.set(facecolor=colors[0])
 
-            # Przypisanie statystyk do poszczególnych elementów boxplota
-            positions = [1]
+            if show_values:
+                quartiles = values.quantile([0.25, 0.5, 0.75])
+                iqr = quartiles[0.75] - quartiles[0.25]
+                whisker_min = values[values >= quartiles[0.25] - 1.5 * iqr].min()
+                whisker_max = values[values <= quartiles[0.75] + 1.5 * iqr].max()
 
-            ax.annotate(f'{whisker_min:.2f}',
-                        xy=(positions[0], whisker_min),
-                        xytext=(0, -15),
-                        textcoords='offset points',
-                        ha='center',
-                        va='bottom',
-                        bbox=dict(facecolor='white', edgecolor='black', alpha=0.7))
+                positions = [1]
 
-            ax.annotate(f'{quartiles[0.25]:.2f}',
-                        xy=(positions[0], quartiles[0.25]),
-                        xytext=(-20, 0),
-                        textcoords='offset points',
-                        ha='center',
-                        va='bottom',
-                        bbox=dict(facecolor='white', edgecolor='black', alpha=0.7))
+                ax.annotate(f'{whisker_min:.2f}',
+                            xy=(positions[0], whisker_min),
+                            xytext=(0, -15),
+                            textcoords='offset points',
+                            ha='center',
+                            va='bottom',
+                            fontsize=label_size,
+                            bbox=dict(facecolor='white', edgecolor='black', alpha=0.7))
 
-            ax.annotate(f'{quartiles[0.5]:.2f}',
-                        xy=(positions[0], quartiles[0.5]),
-                        xytext=(0, 0),
-                        textcoords='offset points',
-                        ha='center',
-                        va='bottom',
-                        bbox=dict(facecolor='white', edgecolor='black', alpha=0.7))
+                ax.annotate(f'{quartiles[0.25]:.2f}',
+                            xy=(positions[0], quartiles[0.25]),
+                            xytext=(-20, 0),
+                            textcoords='offset points',
+                            ha='center',
+                            va='bottom',
+                            fontsize=label_size,
+                            bbox=dict(facecolor='white', edgecolor='black', alpha=0.7))
 
-            ax.annotate(f'{quartiles[0.75]:.2f}',
-                        xy=(positions[0], quartiles[0.75]),
-                        xytext=(20, 0),
-                        textcoords='offset points',
-                        ha='center',
-                        va='bottom',
-                        bbox=dict(facecolor='white', edgecolor='black', alpha=0.7))
+                ax.annotate(f'{quartiles[0.5]:.2f}',
+                            xy=(positions[0], quartiles[0.5]),
+                            xytext=(0, 0),
+                            textcoords='offset points',
+                            ha='center',
+                            va='bottom',
+                            fontsize=label_size,
+                            bbox=dict(facecolor='white', edgecolor='black', alpha=0.7))
 
-            ax.annotate(f'{whisker_max:.2f}',
-                        xy=(positions[0], whisker_max),
-                        xytext=(0, 15),
-                        textcoords='offset points',
-                        ha='center',
-                        va='top',
-                        bbox=dict(facecolor='white', edgecolor='black', alpha=0.7))
+                ax.annotate(f'{quartiles[0.75]:.2f}',
+                            xy=(positions[0], quartiles[0.75]),
+                            xytext=(20, 0),
+                            textcoords='offset points',
+                            ha='center',
+                            va='bottom',
+                            fontsize=label_size,
+                            bbox=dict(facecolor='white', edgecolor='black', alpha=0.7))
 
-            # Dodanie legendy z wyjaśnieniem
-            ax.text(1.3, values.mean(),
-                    f"Min: {whisker_min:.2f}\nQ1: {quartiles[0.25]:.2f}\nMedian: {quartiles[0.5]:.2f}\nQ3: {quartiles[0.75]:.2f}\nMax: {whisker_max:.2f}",
-                    va='center', bbox=dict(facecolor='lightyellow', alpha=0.8))
-            ax.set_title(f'Boxplot of {column}')
+                ax.annotate(f'{whisker_max:.2f}',
+                            xy=(positions[0], whisker_max),
+                            xytext=(0, 15),
+                            textcoords='offset points',
+                            ha='center',
+                            va='top',
+                            fontsize=label_size,
+                            bbox=dict(facecolor='white', edgecolor='black', alpha=0.7))
 
-            # Ustaw margines prawy dla mieszczenia legendy
+                ax.text(1.3, values.mean(),
+                        f"Min: {whisker_min:.2f}\nQ1: {quartiles[0.25]:.2f}\nMedian: {quartiles[0.5]:.2f}\nQ3: {quartiles[0.75]:.2f}\nMax: {whisker_max:.2f}",
+                        va='center', fontsize=label_size, bbox=dict(facecolor='lightyellow', alpha=0.8))
+
             plt.subplots_adjust(right=0.75)
 
         else:
@@ -449,92 +470,78 @@ def generate_plot(df, column, chart_type):
 
     elif chart_type == "Bar Chart":
         if not pd.api.types.is_numeric_dtype(df[column]):
-            # Dla kolumn kategorycznych
             counts = df[column].dropna().value_counts()
-            bars = counts.plot(kind='bar', ax=ax, color='green', edgecolor='black')
+            bars = counts.plot(kind='bar', ax=ax, color=colors, edgecolor='black')
 
-            # Ustaw limit osi Y, aby etykiety się mieściły
-            y_max = max(counts) * 1.1
-            ax.set_ylim(0, y_max)
+            if show_values:
+                y_max = max(counts) * 1.1
+                ax.set_ylim(0, y_max)
 
-            # Dodanie etykiet nad słupkami
-            for i, v in enumerate(counts):
-                ax.text(i, v + (y_max * 0.02), f'{v}',
-                        ha='center', va='bottom',
-                        fontsize=9, fontweight='bold',
-                        bbox=dict(facecolor='white', edgecolor='black', alpha=0.7,
-                                  boxstyle='round,pad=0.2'))
+                for i, v in enumerate(counts):
+                    ax.text(i, v + (y_max * 0.02), f'{v}',
+                            ha='center', va='bottom',
+                            fontsize=label_size, fontweight='bold',
+                            bbox=dict(facecolor='white', edgecolor='black', alpha=0.7,
+                                      boxstyle='round,pad=0.2'))
 
-            ax.set_title(f'Bar Chart of {column}')
             ax.set_xlabel(column)
             ax.set_ylabel('Count')
         else:
-            # Dla kolumn numerycznych - dzielimy na przedziały
             bins = 10
             values = df[column].dropna()
             counts, bin_edges = np.histogram(values, bins=bins)
             width = (bin_edges[1] - bin_edges[0]) * 0.8
             center = (bin_edges[:-1] + bin_edges[1:]) / 2
 
-            # Tworzenie wykresu słupkowego
-            bars = ax.bar(center, counts, width=width, color='purple', edgecolor='black')
+            bars = ax.bar(center, counts, width=width, color=colors, edgecolor='black')
 
-            # Ustaw limit osi Y, aby etykiety się mieściły
-            y_max = max(counts) * 1.1 if len(counts) > 0 else 10
-            ax.set_ylim(0, y_max)
+            if show_values:
+                y_max = max(counts) * 1.1 if len(counts) > 0 else 10
+                ax.set_ylim(0, y_max)
 
-            # Dodanie etykiet nad słupkami
-            for i, v in enumerate(counts):
-                if v > 0:  # Dodawaj etykietę tylko dla słupków z wartościami
-                    ax.text(center[i], v + (y_max * 0.02), f'{v}',
-                            ha='center', va='bottom',
-                            fontsize=9, fontweight='bold',
-                            bbox=dict(facecolor='white', edgecolor='black', alpha=0.7,
-                                      boxstyle='round,pad=0.2'))
+                for i, v in enumerate(counts):
+                    if v > 0:
+                        ax.text(center[i], v + (y_max * 0.02), f'{v}',
+                                ha='center', va='bottom',
+                                fontsize=label_size, fontweight='bold',
+                                bbox=dict(facecolor='white', edgecolor='black', alpha=0.7,
+                                          boxstyle='round,pad=0.2'))
 
-            ax.set_title(f'Bar Chart (Binned) of {column}')
             ax.set_xlabel(column)
             ax.set_ylabel('Frequency')
 
-            # Dodanie etykiet na osi X dla przedziałów
             ax.set_xticks(center)
             ax.set_xticklabels([f'{bin_edges[i]:.1f}-{bin_edges[i + 1]:.1f}' for i in range(len(bin_edges) - 1)],
                                rotation=45, ha='right')
-
 
     elif chart_type == "Line Plot":
         if pd.api.types.is_numeric_dtype(df[column]):
             values = df[column].dropna().reset_index(drop=True)
 
-            # Sortowanie wartości dla lepszej prezentacji
             values_sorted = values.sort_values().reset_index(drop=True)
 
-            # Wykrywanie wartości odstających
             q1 = values.quantile(0.25)
             q3 = values.quantile(0.75)
             iqr = q3 - q1
             lower_bound = q1 - 1.5 * iqr
             upper_bound = q3 + 1.5 * iqr
 
-            # Zastosowanie linii dla wartości regularnych i markerów dla odstających
             regular_mask = (values_sorted >= lower_bound) & (values_sorted <= upper_bound)
             outlier_mask = ~regular_mask
 
-            # Indeksy wartości regularnych jako lista
             regular_indices = np.where(regular_mask)[0]
 
-            # Rysowanie linii dla wartości regularnych
             line = ax.plot(regular_indices, values_sorted[regular_mask],
-                           color='blue', marker='o', markersize=5, linestyle='-', linewidth=1, label='Regular values')
+                           color=colors[0], marker='o', markersize=5, linestyle='-', linewidth=1,
+                           label='Regular values')
 
             y_min, y_max = values_sorted.min(), values_sorted.max()
             y_range = y_max - y_min
             ax.set_ylim(y_min - y_range * 0.1, y_max + y_range * 0.2)
 
-            if len(regular_indices) > 0:
+            if show_values and len(regular_indices) > 0:
                 step = max(1, len(regular_indices) // 10)
                 for i in range(0, len(regular_indices), step):
-
                     if i < len(regular_indices):
                         idx = regular_indices[i]
                         val = values_sorted[regular_mask].iloc[i]
@@ -542,34 +549,27 @@ def generate_plot(df, column, chart_type):
                         ax.annotate(f'{val:.1f}', (idx, val),
                                     xytext=(0, 10), textcoords='offset points',
                                     bbox=dict(facecolor='white', edgecolor='black', alpha=0.7),
-                                    ha='center', va='bottom', fontsize=8)
+                                    ha='center', va='bottom', fontsize=label_size)
 
-            # Indeksy wartości odstających jako lista
             outlier_indices = np.where(outlier_mask)[0]
 
-            # Rysowanie punktów dla wartości odstających
             if len(outlier_indices) > 0:
                 outliers = ax.scatter(outlier_indices, values_sorted[outlier_mask],
                                       color='red', marker='*', s=100, label='Outliers')
 
-                # Dodanie etykiet dla wszystkich wartości odstających
-                for i, idx in enumerate(outlier_indices):
-                    val = values_sorted[outlier_mask].iloc[i]
+                if show_values:
+                    for i, idx in enumerate(outlier_indices):
+                        val = values_sorted[outlier_mask].iloc[i]
 
-                    ax.annotate(f'{val:.1f}', (idx, val),
-                                xytext=(0, 10), textcoords='offset points',
-                                bbox=dict(facecolor='yellow', edgecolor='black', alpha=0.9),
-                                ha='center', va='bottom', fontsize=9, fontweight='bold')
+                        ax.annotate(f'{val:.1f}', (idx, val),
+                                    xytext=(0, 10), textcoords='offset points',
+                                    bbox=dict(facecolor='yellow', edgecolor='black', alpha=0.9),
+                                    ha='center', va='bottom', fontsize=label_size, fontweight='bold')
 
-            ax.set_title(f'Line Plot of {column}')
             ax.set_xlabel('Index')
             ax.set_ylabel(column)
             ax.legend()
 
-            # Dodaj siatkę dla lepszej czytelności
-            ax.grid(True, linestyle='--', alpha=0.7)
-
-            # Dodaj informacje o statystykach
             stats_text = f"Min: {values.min():.2f}, Max: {values.max():.2f}, Avg: {values.mean():.2f}"
             ax.text(0.5, 0.02, stats_text, transform=ax.transAxes, ha='center',
                     bbox=dict(facecolor='white', alpha=0.8))
@@ -580,45 +580,37 @@ def generate_plot(df, column, chart_type):
         if not pd.api.types.is_numeric_dtype(df[column]):
             counts = df[column].dropna().value_counts()
 
-            # Ogranicz liczbę kategorii dla czytelności
             if len(counts) > 10:
                 others = pd.Series([counts[10:].sum()], index=['Others'])
                 counts = pd.concat([counts[:10], others])
 
-            # Wygeneruj kolory
-            colors = plt.cm.Set3(np.linspace(0, 1, len(counts)))
+            pie_colors = colors[:len(counts)]
 
-            # Tworzenie wykresu kołowego
             wedges, texts, autotexts = ax.pie(
                 counts,
-                labels=None,  # Bez etykiet w wykresie, dodamy legendę
-                autopct='%1.1f%%',
-                colors=colors,
-                startangle=90,  # Rozpocznij od góry
+                labels=None if show_values else counts.index,
+                autopct='%1.1f%%' if show_values else None,
+                colors=pie_colors,
+                startangle=90,
                 shadow=True,
                 wedgeprops=dict(width=0.6, edgecolor='w')
             )
 
-            # Stylizacja tekstów z procentami
-            for autotext in autotexts:
-                autotext.set_weight('bold')
-                autotext.set_fontsize(9)
-                autotext.set_bbox(dict(facecolor='white', edgecolor='black', alpha=0.7, boxstyle='round,pad=0.2'))
+            if show_values:
+                for autotext in autotexts:
+                    autotext.set_weight('bold')
+                    autotext.set_fontsize(label_size)
+                    autotext.set_bbox(dict(facecolor='white', edgecolor='black', alpha=0.7, boxstyle='round,pad=0.2'))
 
-            # Dodaj legendę z wartościami dokładnymi
-            labels = [f'{name}: {count} ({count / counts.sum() * 100:.1f}%)' for name, count in counts.items()]
-            ax.legend(wedges, labels, title=column, loc="center left", bbox_to_anchor=(1, 0, 0.5, 1))
+                labels = [f'{name}: {count} ({count / counts.sum() * 100:.1f}%)' for name, count in counts.items()]
+                ax.legend(wedges, labels, title=column, loc="center left", bbox_to_anchor=(1, 0, 0.5, 1),
+                          fontsize=label_size)
 
-            # Ustaw odpowiedni margines prawy, aby legenda się mieściła
-            plt.subplots_adjust(right=0.7)
-
-            # Dodaj tytuł
-            ax.set_title(f'Pie Chart of {column}')
+                plt.subplots_adjust(right=0.7)
         else:
             ax.text(0.5, 0.5, f'Pie Chart not applicable for numeric column "{column}".', ha='center', va='center')
 
     plt.tight_layout()
-
     return fig
 
 
@@ -674,7 +666,6 @@ def extract_subtable(df, row_indices=None, col_indices=None, keep=False):
                 print(f"Keeping rows at indices: {valid_indices}")
                 result_df = result_df.iloc[valid_indices, :]
             else:
-                # Remove specified rows
                 print(f"Removing rows at indices: {valid_indices}")
                 result_df = result_df.drop(result_df.index[valid_indices])
 
@@ -686,11 +677,9 @@ def extract_subtable(df, row_indices=None, col_indices=None, keep=False):
             return None
 
     if col_indices is not None:
-        # Similar processing for column indices...
         try:
             print(f"Raw column indices: {col_indices}")
 
-            # Process column indices
             col_names = []
             for c in col_indices:
                 if isinstance(c, int) and 0 <= c < len(result_df.columns):
@@ -698,10 +687,8 @@ def extract_subtable(df, row_indices=None, col_indices=None, keep=False):
                 elif isinstance(c, str) and c in result_df.columns:
                     col_names.append(c)
                 elif isinstance(c, str) and '-' in c:
-                    # Handle range format for columns if they are numeric
                     try:
                         start, end = map(int, c.split('-'))
-                        # Add all column names in the range if valid
                         for i in range(start, end + 1):
                             if 0 <= i < len(result_df.columns):
                                 col_names.append(result_df.columns[i])
@@ -716,11 +703,9 @@ def extract_subtable(df, row_indices=None, col_indices=None, keep=False):
                 return None
 
             if keep:
-                # Keep only specified columns
                 print(f"Keeping columns: {col_names}")
                 result_df = result_df[col_names]
             else:
-                # Remove specified columns
                 print(f"Removing columns: {col_names}")
                 result_df = result_df.drop(columns=col_names)
 
@@ -747,55 +732,43 @@ def replace_values(df, column, old_value, new_value):
         sg.popup(f"Column '{column}' does not exist!")
         return df
 
-    # Create a copy to avoid modifying the original DataFrame by reference
     df = df.copy()
 
-    # Check if old_value exists in the column
     if old_value not in df[column].values and not (pd.api.types.is_numeric_dtype(df[column]) and
                                                    str(old_value).replace('.', '', 1).isdigit()):
         sg.popup(f"Old value '{old_value}' not found in column '{column}'.")
         return df
 
-    # First convert the value to the appropriate type based on the type of column data
     try:
-        # For numeric columns, try to find closest match
         if pd.api.types.is_numeric_dtype(df[column]):
             try:
                 old_value_numeric = float(old_value) if '.' in old_value else int(old_value)
 
-                # Find exact matches or close matches for float values
                 if isinstance(old_value_numeric, float):
                     mask = np.isclose(df[column], old_value_numeric)
                 else:
                     mask = df[column] == old_value_numeric
 
-                # If switching from numeric to non-numeric, convert the column first
                 if not str(new_value).replace('.', '', 1).replace('-', '', 1).isdigit():
                     df[column] = df[column].astype(str)
 
                 df.loc[mask, column] = new_value
                 print(f"Replaced '{old_value_numeric}' with '{new_value}' in column '{column}'")
             except ValueError:
-                # If we can't convert to numeric, treat as string replacement
                 mask = df[column].astype(str) == str(old_value)
                 df.loc[mask, column] = new_value
         elif isinstance(df[column].dtype, pd.CategoricalDtype):
-            # For categorical columns - convert to string first for more flexible replacement
             df[column] = df[column].astype(str)
             mask = df[column] == str(old_value)
             df.loc[mask, column] = new_value
-            # Convert back to category
             df[column] = df[column].astype('category')
         else:
-            # For string/object columns
             mask = df[column].astype(str) == str(old_value)
             df.loc[mask, column] = new_value
 
-        # Try to infer the right dtype after replacement
         if all(str(val).replace('.', '', 1).replace('-', '', 1).isdigit()
                for val in df[column].dropna().unique()):
             try:
-                # If all values are numeric after replacement, convert to numeric
                 df[column] = pd.to_numeric(df[column], errors='ignore')
             except:
                 pass
@@ -810,16 +783,11 @@ def replace_all_values(df, column, new_value):
         sg.popup(f"Column '{column}' does not exist!")
         return df
 
-    # For categorical columns, rename all categories to the new value
     if isinstance(df[column].dtype, pd.CategoricalDtype):
-        # Check if new_value already exists in categories
         if new_value not in df[column].cat.categories:
-            # Add the new value as a category
             df[column] = df[column].cat.set_categories(list(df[column].cat.categories) + [new_value])
-        # Set all values in the column to new_value
         df[column] = new_value
     else:
-        # For non-categorical columns, replace all values
         df[column] = new_value
 
     return df
@@ -850,7 +818,6 @@ def one_hot_encoding(df, column):
     if column not in df.columns:
         raise ValueError(f"Column '{column}' not found in the dataframe")
 
-    # Create dummy variables and join with original df
     dummies = pd.get_dummies(df[column], prefix=column, drop_first=True)
     result_df = pd.concat([df.drop(columns=[column]), dummies], axis=1)
     return result_df
@@ -860,7 +827,6 @@ def binary_encoding(df, column):
     if column not in df.columns:
         raise ValueError(f"Column '{column}' not found in the dataframe")
 
-    # Convert to category if it's not already
     df = df.copy()
     df[column] = df[column].astype('category')
     df[f"{column}_encoded"] = df[column].cat.codes
@@ -871,7 +837,6 @@ def target_encoding(df, column, target):
     if column not in df.columns or target not in df.columns:
         raise ValueError(f"Column '{column}' or target '{target}' not found in the dataframe")
 
-    # Calculate mean target value for each category
     df = df.copy()
     encoding_map = df.groupby(column)[target].mean().to_dict()
     df[f"{column}_target_encoded"] = df[column].map(encoding_map)
@@ -888,14 +853,11 @@ def scale_columns(df, cols, method='standard'):
     if not chosen_cols:
         raise ValueError("No valid numeric columns selected. Please select from: " + ", ".join(numeric_cols))
 
-    # Create a copy to avoid modifying the original data
     df_copy = df.copy()
 
-    # Handle any NaN values before scaling
     for col in chosen_cols:
         df_copy[col] = df_copy[col].fillna(df_copy[col].mean())
 
-    # Perform scaling
     scaler = StandardScaler() if method == 'standard' else MinMaxScaler()
 
     try:
@@ -916,44 +878,6 @@ def add_symbolic_column(df):
         )
     return df
 
-
-# def logistic_regression(df):
-#     if 'income' not in df.columns:
-#         return None, "No 'income' column found."
-#     local_df = df.dropna(subset=['income']).copy()
-#     local_df = local_df[local_df['income'].isin(['<=50K', '>50K'])]
-#     encoder = LabelEncoder()
-#     local_df['income_encoded'] = encoder.fit_transform(local_df['income'])
-#     numeric_cols = local_df.select_dtypes(include=[np.number]).columns
-#     feature_cols = [c for c in numeric_cols if c not in ['income_encoded']]
-#     if not feature_cols:
-#         return None, "No numeric features available for classification."
-#     X = local_df[feature_cols]
-#     y = local_df['income_encoded']
-#     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-#     clf = LogisticRegression(max_iter=1000)
-#     try:
-#         clf.fit(X_train, y_train)
-#     except Exception as e:
-#         return None, f"Error in Logistic Regression fit: {e}"
-#     accuracy = clf.score(X_test, y_test)
-#     return accuracy, None
-#
-#
-# def kmeans_clustering(df, n_clusters=2):
-#     numeric_cols = df.select_dtypes(include=[np.number]).columns
-#     if len(numeric_cols) < 1:
-#         return None, "No numeric columns available for clustering."
-#     local_df = df.dropna(subset=numeric_cols).copy()
-#     X = local_df[numeric_cols]
-#     kmeans = KMeans(n_clusters=n_clusters, random_state=42)
-#     try:
-#         labels = kmeans.fit_predict(X)
-#     except Exception as e:
-#         return None, f"Error in KMeans: {e}"
-#     return labels, None
-
-
 # ------------------ Layout Definition ------------------ #
 
 # Tab 0: Logo & Creators Info
@@ -972,41 +896,61 @@ tab0_layout = [
 
 # Tab 1: Data & Statistics - zmodyfikowana z rozwijalnymi listami i przyciskami do zapisu/przywrócenia
 tab1_layout = [
-    [sg.Frame("Load Data", [
-        [sg.Radio("Predefined Dataset", "DATA_SOURCE", default=True, key="-PREDEFINED_DATASET-"),
-         sg.Radio("Custom CSV File", "DATA_SOURCE", key="-CUSTOM_CSV-")],
-        [sg.Text("Select Dataset:"), sg.Combo(["Adult Dataset", "Kidney Disease Dataset"],
-                                              default_value="Adult Dataset", key="-SELECT_FILE-", size=(30, 1)),
-         sg.Button("Browse...", key="-BROWSE_CSV-", visible=False),
-         sg.Text("", key="-FILE_PATH-", size=(40, 1), visible=False)],
-        [sg.Button("Load Data", key="-LOAD-"),
-         sg.Button("Restore Original Data", key="-RESTORE_DATA-"),
-         sg.Button("Save Current Data", key="-SAVE_DATA-")]
-    ])],
+    [sg.Column([
+        [sg.Frame("Load Data", [
+            [sg.Radio("Predefined Dataset", "DATA_SOURCE", default=True, key="-PREDEFINED_DATASET-"),
+             sg.Radio("Custom CSV File", "DATA_SOURCE", key="-CUSTOM_CSV-")],
+            [sg.Text("Select Dataset:"), sg.Combo(["Adult Dataset", "Kidney Disease Dataset"],
+                                                 default_value="Adult Dataset", key="-SELECT_FILE-", size=(30, 1)),
+             sg.Button("Browse...", key="-BROWSE_CSV-", visible=False),
+             sg.Text("", key="-FILE_PATH-", size=(40, 1), visible=False)],
+            [sg.Button("Load Data", key="-LOAD-"),
+             sg.Button("Restore Original Data", key="-RESTORE_DATA-"),
+             sg.Button("Save Current Data", key="-SAVE_DATA-")]
+        ])],
 
-    [sg.Multiline(size=(100, 6), key="-DATA_INFO-", disabled=True)],
+        [sg.Multiline(size=(100, 6), key="-DATA_INFO-", disabled=True)],
 
-    [sg.Frame("Data Statistics", [
-        [sg.Button("Compute Stats", key="-STATS-"), sg.Button("Correlation", key="-CORR-")],
+        [sg.Frame("Data Statistics", [
+            [sg.Button("Compute Stats", key="-STATS-"), sg.Button("Correlation", key="-CORR-")],
 
-        [sg.Text("Numeric Columns Statistics:")],
-        [sg.Table(values=[],
-                  headings=["Column", "Min", "Max", "Mean", "Median", "Std", "Mode", "Variance", "Skewness",
-                            "Kurtosis"],
-                  key="-NUMERIC_STATS-", auto_size_columns=True, justification='center', expand_x=True, expand_y=True)],
+            [sg.Text("Numeric Columns Statistics:")],
+            [sg.Table(values=[],
+                      headings=["Column", "Min", "Max", "Mean", "Median", "Std", "Mode", "Variance", "Skewness",
+                                "Kurtosis"],
+                      key="-NUMERIC_STATS-", auto_size_columns=True, justification='center',
+                      expand_x=True, expand_y=True, size=(800, 10))],
 
-        [sg.Text("Categorical Columns Statistics:")],
-        [sg.Table(values=[], headings=["Column", "Value Counts", "Mode"],
-                  key="-CATEGORICAL_STATS-", auto_size_columns=True, justification='center', expand_x=True,
-                  expand_y=True)]
-    ])],
+            [sg.Text("Categorical Columns Statistics:")],
+            [sg.Table(values=[], headings=["Column", "Value Counts", "Mode"],
+                      key="-CATEGORICAL_STATS-", auto_size_columns=True, justification='center',
+                      expand_x=True, expand_y=True, size=(800, 10))]
+        ], expand_x=True)],
 
-    [sg.Frame("Correlation Results", [
-        [sg.Multiline(size=(150, 10), key="-CORR_OUT-", disabled=True)]
-    ])]
+        [sg.Frame("Correlation Results", [
+            [sg.Text("Pearson Correlation Matrix:")],
+            [sg.Table(values=[],
+                      headings=["Column", "col1", "col2", "col3", "col4", "col5", "col6"],
+                      key="-PEARSON_CORR-",
+                      auto_size_columns=True,
+                      justification='center',
+                      expand_x=True,
+                      size=(800, 10),
+                      display_row_numbers=False)],
+            [sg.Text("Spearman Correlation Matrix:")],
+            [sg.Table(values=[],
+                      headings=["Column", "col1", "col2", "col3", "col4", "col5", "col6"],
+                      key="-SPEARMAN_CORR-",
+                      auto_size_columns=True,
+                      justification='center',
+                      expand_x=True,
+                      size=(800, 10),
+                      display_row_numbers=False)]
+        ], expand_x=True)],
+    ], scrollable=True, vertical_scroll_only=True, expand_x=True, expand_y=True, size=(1180, 750))]
 ]
 
-# Tab 2: Extract Subtable - zmodyfikowana z rozwijalnymi listami
+# Tab 2: Extract Subtable - zmodyfikowana z rozwijalnymi listami i tabelą zamiast Multiline
 tab2_layout = [
     [sg.Frame("Subtable Extraction", [
         [sg.Radio("Remove Rows/Columns", "EXTRACTION_TYPE", default=True, key="-REMOVE_EXTRACT-"),
@@ -1020,14 +964,20 @@ tab2_layout = [
          sg.Button("Add Column", key="-ADD_COL-"),
          sg.Button("Clear Columns", key="-CLEAR_COLS-")],
 
-        # Dodaj tę linię, która była brakująca w oryginalnym kodzie
         [sg.Text("Selected Columns:"), sg.Input("", key="-SELECTED_COLS-", size=(50, 1), readonly=True)],
 
         [sg.Button("Extract Subtable", key="-EXTRACT_BTN-"),
          sg.Button("Save Subtable", key="-SAVE_SUBTABLE-")],
 
-        [sg.Multiline(size=(150, 10), key="-EXTRACT_OUT-", disabled=True, horizontal_scroll=True)]
-    ])],
+        [sg.Table(values=[[]],
+                 headings=["Index"] + ["Column 1", "Column 2", "Column 3", "Column 4", "Column 5"],
+                 key="-EXTRACT_OUT-",
+                 auto_size_columns=True,
+                 justification='center',
+                 num_rows=10,
+                 vertical_scroll_only=False,
+                 expand_x=True)]
+    ], size=(900, 450))],
 
     [sg.Frame("Value Replacement", [
         [sg.Text("Select Column:"),
@@ -1050,7 +1000,7 @@ tab2_layout = [
          sg.InputText(key="-ALL_NEW_VAL-", size=(30, 1))],
 
         [sg.Button("Replace All Values", key="-REPLACE_ALL_BTN-")]
-    ])]
+    ], size=(900, 300))]
 ]
 
 # Tab 3: Scaling & Visualization - zmodyfikowana z rozwijalnymi listami
@@ -1061,7 +1011,6 @@ tab3_layout = [
          sg.Button("Add", key="-ADD_SCALE_COL-"),
          sg.Button("Clear", key="-CLEAR_SCALE_COLS-")],
 
-        # Upewnij się, że ten element istnieje w układzie interfejsu
         [sg.Text("Selected Columns:"), sg.Input("", key="-SELECTED_SCALE_COLS-", size=(50, 1), readonly=True)],
 
         [sg.Radio("StandardScaler", "SCALER", default=True, key="-STD_SCALER-"),
@@ -1071,25 +1020,48 @@ tab3_layout = [
          sg.Button("Save Scaled Data", key="-SAVE_SCALED-"),
          sg.Button("Restore Original", key="-RESTORE_SCALED-")],
 
-        [sg.Multiline(size=(150, 8), key="-SCALED_DATA-", disabled=True)]
-    ])],
+        [sg.Table(values=[[]],
+                 headings=["Index"] + ["Column 1", "Column 2", "Column 3", "Column 4", "Column 5"],
+                 key="-SCALED_DATA-",
+                 auto_size_columns=True,
+                 justification='center',
+                 num_rows=8,
+                 expand_x=True)]
+    ], size=(1000, 350))],
 
-    [sg.Frame("Data Visualization", [
-        [sg.Text("Select Column to Plot:"),
-         sg.Combo([], key="-PLOT_SELECT-", size=(30, 1))],
+    [sg.Column([  # Dodaję przewijalną kolumnę
+        [sg.Frame("Data Visualization", [
+            [sg.Text("Select Column to Plot:"),
+             sg.Combo([], key="-PLOT_SELECT-", size=(30, 1))],
 
-        [sg.Text("Select Chart Type:")],
-        [sg.Radio("Histogram", "CHART", default=True, key="-CHART_HIST-"),
-         sg.Radio("Boxplot", "CHART", key="-CHART_BOX-"),
-         sg.Radio("Bar Chart", "CHART", key="-CHART_BAR-"),
-         sg.Radio("Line Plot", "CHART", key="-CHART_LINE-"),
-         sg.Radio("Pie Chart", "CHART", key="-CHART_PIE-")],
+            [sg.Text("Select Chart Type:")],
+            [sg.Radio("Histogram", "CHART", default=True, key="-CHART_HIST-"),
+             sg.Radio("Boxplot", "CHART", key="-CHART_BOX-"),
+             sg.Radio("Bar Chart", "CHART", key="-CHART_BAR-"),
+             sg.Radio("Line Plot", "CHART", key="-CHART_LINE-"),
+             sg.Radio("Pie Chart", "CHART", key="-CHART_PIE-")],
 
-        [sg.Button("Generate Plot", key="-PLOT_BTN-"),
-         sg.Button("Save Plot as Image", key="-SAVE_PLOT-")],
+            [sg.Text("Chart Options:")],
+            [sg.Checkbox("Show Value Labels", default=True, key="-SHOW_VALUES-"),
+             sg.Checkbox("Show Grid Lines", default=True, key="-SHOW_GRID-")],
 
-        [sg.Canvas(key="-CANVAS-", size=(600, 400), expand_x=True, expand_y=True)]
-    ])]
+            [sg.Text("Label Size:"),
+             sg.Slider(range=(6, 16), default_value=9, orientation='h', size=(15, 15), key="-LABEL_SIZE-"),
+             sg.Text("Chart Title:"),
+             sg.Input(key="-CHART_TITLE-", size=(25, 1))],
+
+            [sg.Text("Color Theme:"),
+             sg.Combo(values=["Default", "Pastel", "Dark", "Colorblind", "Grayscale"],
+                      default_value="Default", key="-COLOR_THEME-", size=(15, 1))],
+
+            [sg.Button("Generate Plot", key="-PLOT_BTN-"),
+             sg.Button("Save Plot as Image", key="-SAVE_PLOT-")],
+
+            [sg.Column([
+                [sg.Canvas(key="-CANVAS-", size=(800, 600))]
+            ], scrollable=True, vertical_scroll_only=True, size=(900, 500))]
+        ])]
+    ], scrollable=True, vertical_scroll_only=True, expand_x=True, size=(900, 700))]
 ]
 
 # Tab 4: Data Cleaning & Transformation - zmodyfikowana z rozwijalnymi listami
@@ -1099,12 +1071,12 @@ tab4_layout = [
                   key="-MISSING_STRATEGY-"),
          sg.Button("Apply Missing Values Handling", key="-APPLY_MISSING-"),
          sg.Button("Save Cleaned Data", key="-SAVE_CLEANED-")]
-    ])],
+    ], size=(1000, 50))],
 
     [sg.Frame("Duplicates", [
         [sg.Button("Remove Duplicates", key="-REMOVE_DUPLICATES-"),
          sg.Button("Save After Duplicate Removal", key="-SAVE_DEDUP-")]
-    ])],
+    ], size=(1000, 50))],
 
     [sg.Frame("Encoding", [
         [sg.Text("Select Column to Encode:"),
@@ -1119,14 +1091,21 @@ tab4_layout = [
 
         [sg.Button("Apply Encoding", key="-APPLY_ENCODING-"),
          sg.Button("Save Encoded Data", key="-SAVE_ENCODED-")]
-    ])],
+    ], size=(1000, 150))],
 
     [sg.Frame("Data Preview", [
-        [sg.Multiline(size=(150, 10), key="-CLEANED_DATA-", disabled=True)]
-    ])]
+        [sg.Table(values=[[]],
+                  headings=["Index"] + ["Column 1", "Column 2", "Column 3", "Column 4", "Column 5"],
+                  key="-CLEANED_DATA-",
+                  auto_size_columns=True,
+                  justification='center',
+                  num_rows=10,
+                  vertical_scroll_only=False,
+                  expand_x=True,
+                  )]
+    ], size=(1000, 500))]
 ]
 
-# Opcje zapisu
 save_options_layout = [
     [sg.Checkbox("Include Row Indices", default=False, key="-SAVE_INCLUDE_INDEX-")],
     [sg.Checkbox("Include Column Headers", default=True, key="-SAVE_INCLUDE_HEADER-")],
@@ -1142,15 +1121,12 @@ layout = [
         [sg.TabGroup([[
             sg.Tab("Creators & Info", tab0_layout, expand_x=True, expand_y=True, background_color=background_color),
             sg.Tab("Data & Stats", tab1_layout, expand_x=True, expand_y=True, background_color=background_color),
-            sg.Tab("Replacement & Subtable", tab2_layout, expand_x=True, expand_y=True,
-                   background_color=background_color),
-            sg.Tab("Scaling & Visualization", tab3_layout, expand_x=True, expand_y=True,
-                   background_color=background_color),
-            sg.Tab("Data Cleaning & Transformation", tab4_layout, expand_x=True, expand_y=True,
-                   background_color=background_color)
+            sg.Tab("Replacement & Subtable", tab2_layout, expand_x=True, expand_y=True, background_color=background_color),
+            sg.Tab("Scaling & Visualization", tab3_layout, expand_x=True, expand_y=True, background_color=background_color),
+            sg.Tab("Data Cleaning & Transformation", tab4_layout, expand_x=True, expand_y=True, background_color=background_color)
         ]], tab_location='top', font=("Helvetica", 14, "bold"), expand_x=True, expand_y=True, key='-TABGROUP-',
-            size=(1200, 1200))]
-    ], scrollable=True, vertical_scroll_only=True, expand_x=True, expand_y=True)]
+            size=(1000, 800))]
+    ], scrollable=False, expand_x=True, expand_y=True)]
 ]
 
 window = sg.Window("DataFusion - Project", layout, resizable=True, finalize=True, element_justification='center')
@@ -1164,7 +1140,6 @@ while True:
     if event == "-ENTER-":
         window['-TABGROUP-'].Widget.select(1)
 
-    # Obsługa ładowania danych
     elif event == "-BROWSE_CSV-":
         file_path = sg.popup_get_file('Choose CSV file', file_types=(("CSV Files", "*.csv"),))
         if file_path:
@@ -1187,29 +1162,22 @@ while True:
                 selected_file = values["-SELECT_FILE-"]
                 df = load_dataset(selected_file, is_predefined=True)
             else:
-                # Gdy wybrano Custom CSV, sprawdź czy już wybrano plik
                 file_path = values.get("-FILE_PATH-", "")
 
-                # Jeśli nie ma jeszcze wybranego pliku, otwórz okno dialogowe wyboru pliku
                 if not file_path:
                     file_path = sg.popup_get_file('Choose CSV file',
                                                   file_types=(("CSV Files", "*.csv"),))
 
-                    # Aktualizuj etykietę z wybraną ścieżką
                     if file_path:
                         window["-FILE_PATH-"].update(file_path)
                         window["-FILE_PATH-"].update(visible=True)
                     else:
-                        # Użytkownik anulował wybór pliku
                         continue
 
-                # Załaduj wybrany plik CSV
                 df = load_dataset(file_path, is_predefined=False)
 
-            # Aktualizacja interfejsu
             window["-DATA_INFO-"].update(f"Dataset loaded with {len(df)} rows and {len(df.columns)} columns:\n" +
                                          ", ".join(df.columns))
-            # Aktualizacja list rozwijanych ze wszystkimi kolumnami
             all_columns = list(df.columns)
             window["-PLOT_SELECT-"].update(values=all_columns, value=all_columns[0] if all_columns else "")
             window["-ENCODE_COL-"].update(values=all_columns)
@@ -1232,20 +1200,23 @@ while True:
             sg.popup("No original data available to restore!")
 
     elif event == "-SAVE_DATA-":
-        # Pokaż okno dialogowe z opcjami zapisu
-        save_window = sg.Window("Save Options", save_options_layout)
+        window_title = f"Save Current Data_{hash(str(df))}"
+        save_window = create_save_options_window(window_title)
+
         while True:
             save_event, save_values = save_window.read()
             if save_event in (sg.WIN_CLOSED, "-CANCEL_SAVE-"):
                 break
+
             elif save_event == "-CONFIRM_SAVE-":
-                include_index = save_values["-SAVE_INCLUDE_INDEX-"]
-                include_header = save_values["-SAVE_INCLUDE_HEADER-"]
+                unique_suffix = f"_{id(window_title)}_{window_title}"
+                include_index = save_values[f"-SAVE_INCLUDE_INDEX{unique_suffix}"]
+                include_header = save_values[f"-SAVE_INCLUDE_HEADER{unique_suffix}"]
                 save_dataframe_to_csv(df, include_index, include_header)
                 break
         save_window.close()
+        del save_window
 
-    # Obsługa statystyk
     elif event == "-STATS-":
         if df is None:
             sg.popup("Please load the dataset first.")
@@ -1256,14 +1227,12 @@ while True:
                 print(df.dtypes)
                 stats_data = compute_statistics(df, dataset_type)
 
-                # Separate numeric and categorical stats
                 numeric_stats = []
                 categorical_stats = []
                 for stat in stats_data:
-                    # Check if this is a numeric stat (has at least 2 numeric values)
                     if len(stat) > 2 and isinstance(stat[1], (int, float)) and isinstance(stat[2], (int, float)):
                         numeric_stats.append(stat)
-                    elif len(stat) <= 3:  # Categorical stats have 3 or fewer items
+                    elif len(stat) <= 3:
                         categorical_stats.append(stat)
 
                 print(f"Found {len(numeric_stats)} numeric stats and {len(categorical_stats)} categorical stats")
@@ -1282,31 +1251,48 @@ while True:
     elif event == "-CORR-":
         if df is None:
             sg.popup("Please load the dataset first.")
+
         else:
             pearson_corr, spearman_corr = compute_correlation(df)
             if pearson_corr is None or spearman_corr is None:
-                window["-CORR_OUT-"].update("Not enough numeric columns for correlation.")
+                sg.popup("Not enough numeric columns for correlation.")
+
             else:
-                # Format correlation matrices for better readability
-                def format_corr_matrix(corr_matrix, title):
-                    result = f"\n{title}\n" + "=" * len(title) + "\n\n"
-                    formatted_matrix = []
-                    headers = [""] + list(corr_matrix.columns)
-                    formatted_matrix.append("\t".join(str(h) for h in headers))
-                    for idx, row in corr_matrix.iterrows():
-                        formatted_row = [str(idx)]
-                        for val in row:
-                            formatted_row.append(f"{val:.3f}")
-                        formatted_matrix.append("\t".join(formatted_row))
-                    return result + "\n".join(formatted_matrix)
+                headers = ["Column"] + list(pearson_corr.columns)
+                pearson_data = []
 
+                for idx, row in pearson_corr.iterrows():
+                    row_data = [idx]
+                    for val in row:
+                        row_data.append(round(val, 3))
+                    pearson_data.append(row_data)
+                spearman_data = []
 
-                pearson_formatted = format_corr_matrix(pearson_corr, "Pearson Correlation Matrix")
-                spearman_formatted = format_corr_matrix(spearman_corr, "Spearman Correlation Matrix")
-                window["-CORR_OUT-"].update(pearson_formatted + "\n\n" + spearman_formatted)
+                for idx, row in spearman_corr.iterrows():
+                    row_data = [idx]
 
-    # Obsługa subtable i operacji na wartościach
-    # Poprawka dla obsługi zdarzenia "-ADD_COL-"
+                    for val in row:
+                        row_data.append(round(val, 3))
+                    spearman_data.append(row_data)
+                window["-PEARSON_CORR-"].update(values=pearson_data, num_rows=min(10, len(pearson_data)))
+                if len(headers) > 0:
+
+                    try:
+                        window["-PEARSON_CORR-"].update(visible=False)
+                        window["-PEARSON_CORR-"].update(values=pearson_data, visible=True)
+                        window["-PEARSON_CORR-"].ColumnHeadings = headers
+                    except:
+                        pass
+                window["-SPEARMAN_CORR-"].update(values=spearman_data, num_rows=min(10, len(spearman_data)))
+
+                if len(headers) > 0:
+                    try:
+                        window["-SPEARMAN_CORR-"].update(visible=False)
+                        window["-SPEARMAN_CORR-"].update(values=spearman_data, visible=True)
+                        window["-SPEARMAN_CORR-"].ColumnHeadings = headers
+                    except:
+                        pass
+
     elif event == "-ADD_COL-":
         if df is None:
             sg.popup("Please load the dataset first.")
@@ -1316,18 +1302,15 @@ while True:
         if not selected_col:
             continue
 
-        # Użyj metody get() aby uniknąć KeyError
         current_cols = values.get("-SELECTED_COLS-", "").strip()
         if current_cols:
             updated_cols = current_cols + ", " + selected_col
         else:
             updated_cols = selected_col
 
-        # Sprawdź, czy element istnieje w oknie przed próbą aktualizacji
         if "-SELECTED_COLS-" in window.key_dict:
             window["-SELECTED_COLS-"].update(updated_cols)
         else:
-            # Jeśli element nie istnieje, wyświetl komunikat dla diagnostyki
             print(f"Warning: Key '-SELECTED_COLS-' not found in window elements")
             sg.popup("UI error: Could not update selected columns list.")
 
@@ -1344,172 +1327,189 @@ while True:
             sg.popup("Please load the dataset first.")
         else:
             try:
-                # Get input and remove whitespace
                 row_input = values["-ROW_INPUT-"].strip()
                 col_input = values["-SELECTED_COLS-"].strip()
-
-                # Debug prints
                 print(f"Row input: '{row_input}'")
                 print(f"Column input: '{col_input}'")
-
-                # Parse row indices
                 row_indices = None
+
                 if row_input:
-                    # Split by comma and strip whitespace from each part
                     row_indices = [part.strip() for part in row_input.split(",") if part.strip()]
-                    # Convert to integers if possible
                     row_indices = [int(i) if i.isdigit() else i for i in row_indices]
                     print(f"Parsed row indices: {row_indices}")
-
-                # Parse column indices
                 col_indices = None
+
                 if col_input:
                     col_indices = [part.strip() for part in col_input.split(",") if part.strip()]
                     col_indices = [int(i) if i.isdigit() else i for i in col_indices]
                     print(f"Parsed column indices: {col_indices}")
-
                 keep = values["-KEEP_EXTRACT-"]
                 print(f"Keep mode: {keep}")
-
-                # Extract subtable
                 sub_df = extract_subtable(df, row_indices, col_indices, keep)
 
                 if sub_df is None or sub_df.empty:
-                    window["-EXTRACT_OUT-"].update("Invalid range or empty subtable.")
-                else:
-                    # Display result
-                    display_df = sub_df.head(10)
-                    result_text = display_df.to_string()
-                    if len(sub_df) > 10:
-                        result_text += f"\n\n[Showing first 10 of {len(sub_df)} rows]"
-                    window["-EXTRACT_OUT-"].update(result_text)
+                    window["-EXTRACT_OUT-"].update(values=[[]])
+                    sg.popup("Invalid range or empty subtable.")
 
-                    # Aktualizacja globalnego DataFrame
+                else:
+                    display_df = sub_df.head(10)
+                    table_data = []
+                    for i, row in display_df.iterrows():
+                        row_data = [str(i)]
+                        for val in row:
+                            if isinstance(val, (float, int)):
+                                row_data.append(str(round(val, 4)) if val % 1 != 0 else str(int(val)))
+                            else:
+                                row_data.append(str(val))
+                        table_data.append(row_data)
+                    window["-EXTRACT_OUT-"].update(values=table_data)
+                    try:
+                        window["-EXTRACT_OUT-"].ColumnHeadings = ["Index"] + list(display_df.columns)
+                    except:
+                        pass
                     df = sub_df
+                    if len(sub_df) > 10:
+                        sg.popup(f"Showing first 10 of {len(sub_df)} rows")
+
             except Exception as e:
                 print(f"Error in subtable extraction: {e}")
                 import traceback
-
                 traceback.print_exc()
                 sg.popup(f"Error extracting subtable: {e}")
 
     elif event == "-SAVE_SUBTABLE-":
-        # Pokaż okno dialogowe z opcjami zapisu
-        save_window = sg.Window("Save Options", save_options_layout)
+        window_title = f"Save Subtable_{hash(str(df))}"
+        save_window = create_save_options_window(window_title)
         while True:
             save_event, save_values = save_window.read()
             if save_event in (sg.WIN_CLOSED, "-CANCEL_SAVE-"):
                 break
             elif save_event == "-CONFIRM_SAVE-":
-                include_index = save_values["-SAVE_INCLUDE_INDEX-"]
-                include_header = save_values["-SAVE_INCLUDE_HEADER-"]
+                unique_suffix = f"_{id(window_title)}_{window_title}"
+                include_index = save_values[f"-SAVE_INCLUDE_INDEX{unique_suffix}"]
+                include_header = save_values[f"-SAVE_INCLUDE_HEADER{unique_suffix}"]
                 save_dataframe_to_csv(df, include_index, include_header)
                 break
-        save_window.close()
 
+        save_window.close()
+        del save_window
     elif event == "-GET_VALUES-":
         if df is None:
             sg.popup("Please load the dataset first.")
             continue
-
         selected_col = values["-REPLACE_COL-"]
         if not selected_col or selected_col not in df.columns:
             sg.popup("Please select a valid column.")
             continue
-
-        # Pobierz unikalne wartości z kolumny i zaktualizuj listę rozwijaną
         unique_values = df[selected_col].dropna().unique().tolist()
-        unique_values = [str(val) for val in unique_values]  # Konwersja na stringi dla listy rozwijanej
+
+        if pd.api.types.is_numeric_dtype(df[selected_col]):
+            unique_values.sort()
+
+        else:
+            try:
+                unique_values.sort()
+
+            except TypeError:
+                unique_values = [str(val) for val in unique_values]
+                unique_values.sort()
+
+        unique_values = [str(val) for val in unique_values]
         window["-OLD_VAL-"].update(values=unique_values, value=unique_values[0] if unique_values else "")
 
     elif event == "-REPLACE_BTN-":
         if df is None:
             sg.popup("Please load the dataset first.")
+
         else:
             col_to_replace = values["-REPLACE_COL-"]
             old_value = values["-OLD_VAL-"]
             new_value = values["-NEW_VAL-"]
-
             if not col_to_replace or not old_value or not new_value:
                 sg.popup("Please fill in all fields for column, old value, and new value.")
+
             else:
                 try:
-                    # Zachowaj kopię oryginalnego DataFrame
                     temp_df = df.copy()
-
-                    # Zastosuj funkcję zastępowania
                     df = replace_values(df, col_to_replace, old_value, new_value)
-
-                    # Sprawdź, czy nastąpiła zmiana
                     changes_made = not df[col_to_replace].equals(temp_df[col_to_replace])
 
                     if changes_made:
-                        window["-EXTRACT_OUT-"].update(
-                            f"Replaced '{old_value}' with '{new_value}' in column '{col_to_replace}'\n\n" +
-                            df.head(10).to_string() +
-                            (f"\n\n[Showing first 10 of {len(df)} rows]" if len(df) > 10 else "")
-                        )
-
-                        # Aktualizacja listy unikalnych wartości po zamianie
+                        display_df = df.head(10)
+                        table_data = []
+                        for i, row in display_df.iterrows():
+                            row_data = [str(i)]
+                            for val in row:
+                                if isinstance(val, (float, int)):
+                                    row_data.append(str(round(val, 4)) if val % 1 != 0 else str(int(val)))
+                                else:
+                                    row_data.append(str(val))
+                            table_data.append(row_data)
+                        window["-EXTRACT_OUT-"].update(values=table_data)
+                        try:
+                            window["-EXTRACT_OUT-"].ColumnHeadings = ["Index"] + list(display_df.columns)
+                        except:
+                            pass
+                        sg.popup(f"Replaced '{old_value}' with '{new_value}' in column '{col_to_replace}'")
                         unique_values = df[col_to_replace].dropna().unique().tolist()
                         unique_values = [str(val) for val in unique_values]
                         window["-OLD_VAL-"].update(values=unique_values)
                     else:
-                        window["-EXTRACT_OUT-"].update(
-                            f"No values '{old_value}' found in column '{col_to_replace}' to replace."
-                        )
+                        sg.popup(f"No values '{old_value}' found in column '{col_to_replace}' to replace.")
                 except Exception as e:
                     sg.popup(f"Error replacing values: {e}")
 
-
     elif event == "-SAVE_REPLACED-":
-        # Użyj unikalnej nazwy dla okna, aby zapewnić unikalne klucze elementów
-        save_window = create_save_options_window("Save After Replacement")
+        window_title = f"Save After Replacement_{hash(str(df))}"
+        save_window = create_save_options_window(window_title)
         while True:
             save_event, save_values = save_window.read()
             if save_event in (sg.WIN_CLOSED, "-CANCEL_SAVE-"):
                 break
             elif save_event == "-CONFIRM_SAVE-":
-                # Pobierz wartości z elementów o unikalnych kluczach
-                include_index = save_values[f"-SAVE_INCLUDE_INDEX-Save After Replacement"]
-                include_header = save_values[f"-SAVE_INCLUDE_HEADER-Save After Replacement"]
+                unique_suffix = f"_{id(window_title)}_{window_title}"
+                include_index = save_values[f"-SAVE_INCLUDE_INDEX{unique_suffix}"]
+                include_header = save_values[f"-SAVE_INCLUDE_HEADER{unique_suffix}"]
                 save_dataframe_to_csv(df, include_index, include_header)
                 break
         save_window.close()
-
+        del save_window
     elif event == "-REPLACE_ALL_BTN-":
         if df is None:
             sg.popup("Please load the dataset first.")
         else:
             col_to_replace_all = values["-ALL_REPLACE_COL-"]
             new_value_all = values["-ALL_NEW_VAL-"]
-
             if not col_to_replace_all or not new_value_all:
                 sg.popup("Please fill in all fields for column and new value.")
+
             else:
                 try:
-                    # Keep a copy of the original dataframe for comparison
                     temp_df = df.copy()
-
-                    # Apply the replace_all_values function
                     df = replace_all_values(df, col_to_replace_all, new_value_all)
-
-                    # Check if the column exists in the dataframe
                     if col_to_replace_all in df.columns:
-                        # Update the extract output area with confirmation and data preview
-                        window["-EXTRACT_OUT-"].update(
-                            f"Replaced all values in column '{col_to_replace_all}' with '{new_value_all}'\n\n" +
-                            df.head(10).to_string() +
-                            (f"\n\n[Showing first 10 of {len(df)} rows]" if len(df) > 10 else "")
-                        )
+                        display_df = df.head(10)
+                        table_data = []
+                        for i, row in display_df.iterrows():
+                            row_data = [str(i)]
+                            for val in row:
+                                if isinstance(val, (float, int)):
+                                    row_data.append(str(round(val, 4)) if val % 1 != 0 else str(int(val)))
+                                else:
+                                    row_data.append(str(val))
+                            table_data.append(row_data)
+                        window["-EXTRACT_OUT-"].update(values=table_data)
+
+                        try:
+                            window["-EXTRACT_OUT-"].ColumnHeadings = ["Index"] + list(display_df.columns)
+                        except:
+                            pass
+                        sg.popup(f"Replaced all values in column '{col_to_replace_all}' with '{new_value_all}'")
                     else:
-                        window["-EXTRACT_OUT-"].update(
-                            f"Column '{col_to_replace_all}' does not exist in the dataframe."
-                        )
+                        sg.popup(f"Column '{col_to_replace_all}' does not exist in the dataframe.")
                 except Exception as e:
                     sg.popup(f"Error replacing all values: {e}")
 
-    # Obsługa skalowania i wizualizacji
     elif event == "-ADD_SCALE_COL-":
         if df is None:
             sg.popup("Please load the dataset first.")
@@ -1519,14 +1519,12 @@ while True:
         if not selected_col:
             continue
 
-        # Użyj metody get() aby uniknąć KeyError
         current_cols = values.get("-SELECTED_SCALE_COLS-", "").strip()
         if current_cols:
             updated_cols = current_cols + ", " + selected_col
         else:
             updated_cols = selected_col
 
-        # Sprawdź, czy element istnieje w oknie przed próbą aktualizacji
         if "-SELECTED_SCALE_COLS-" in window.key_dict:
             window["-SELECTED_SCALE_COLS-"].update(updated_cols)
         else:
@@ -1544,55 +1542,71 @@ while True:
     elif event == "-APPLY_SCALING-":
         if df is None:
             sg.popup("Please load the dataset first.")
+
         else:
             cols_str = values["-SELECTED_SCALE_COLS-"]
-            cols_list = [c.strip() for c in cols_str.split(",") if c.strip() != ""]  # Clean the input
-
+            cols_list = [c.strip() for c in cols_str.split(",") if c.strip() != ""]
             if not cols_list:
                 sg.popup("Please enter column names to scale, separated by commas.")
                 continue
-
             method = "standard" if values["-STD_SCALER-"] else "minmax"
-
             try:
-                # Create a copy to avoid modifying the original dataframe directly
                 scaled_df = scale_columns(df, cols_list, method=method)
-
-                # Update the original dataframe with the scaled values
                 for col in cols_list:
                     if col in scaled_df.columns and col in df.columns:
                         df[col] = scaled_df[col]
+                preview_df = df[cols_list].head(10)
+                data_rows = [preview_df.index.astype(str).tolist()] + preview_df.values.tolist()
+                table_data = [[str(data_rows[0][i])] + [str(round(val, 4)) if isinstance(val, (int, float)) else str(val)
+                                                        for val in row]
+                              for i, row in enumerate(data_rows[1:])]
 
-                # Show preview of scaled data
-                window["-SCALED_DATA-"].update(df[cols_list].head(10).to_string())
+                window["-SCALED_DATA-"].update(values=table_data)
 
-                # Show confirmation message
+                try:
+                    window["-SCALED_DATA-"].ColumnHeadings = ["Index"] + list(preview_df.columns)
+                except:
+                    pass
                 sg.popup(f"Applied {method} scaling to columns: {', '.join(cols_list)}")
             except Exception as e:
                 sg.popup(f"Error scaling columns: {str(e)}")
-
     elif event == "-SAVE_SCALED-":
-        # Pokaż okno dialogowe z opcjami zapisu
-        save_window = sg.Window("Save Options", save_options_layout)
+        window_title = f"Save Scaled Data_{hash(str(df))}"
+        save_window = create_save_options_window(window_title)
         while True:
             save_event, save_values = save_window.read()
             if save_event in (sg.WIN_CLOSED, "-CANCEL_SAVE-"):
                 break
             elif save_event == "-CONFIRM_SAVE-":
-                include_index = save_values["-SAVE_INCLUDE_INDEX-"]
-                include_header = save_values["-SAVE_INCLUDE_HEADER-"]
+                unique_suffix = f"_{id(window_title)}_{window_title}"
+                include_index = save_values[f"-SAVE_INCLUDE_INDEX{unique_suffix}"]
+                include_header = save_values[f"-SAVE_INCLUDE_HEADER{unique_suffix}"]
                 save_dataframe_to_csv(df, include_index, include_header)
                 break
         save_window.close()
-
+        del save_window
     elif event == "-RESTORE_SCALED-":
         if original_df is not None:
             df = restore_original_data()
-            window["-SCALED_DATA-"].update(df.head(10).to_string())
+
+            if "SELECTED_SCALE_COLS" in values and values["-SELECTED_SCALE_COLS-"]:
+                cols_to_show = [c.strip() for c in values["-SELECTED_SCALE_COLS-"].split(",") if c.strip() != ""]
+            else:
+                cols_to_show = list(df.columns[:min(5, len(df.columns))])
+            preview_df = df[cols_to_show].head(10)
+            data_rows = [preview_df.index.astype(str).tolist()] + preview_df.values.tolist()
+            table_data = [[str(data_rows[0][i])] + [str(round(val, 4)) if isinstance(val, (int, float)) else str(val)
+                                                    for val in row]
+                          for i, row in enumerate(data_rows[1:])]
+            window["-SCALED_DATA-"].update(values=table_data)
+
+            try:
+                window["-SCALED_DATA-"].ColumnHeadings = ["Index"] + list(preview_df.columns)
+            except:
+                pass
             sg.popup("Original data restored successfully!")
         else:
             sg.popup("No original data available to restore!")
-
 
     elif event == "-PLOT_BTN-":
         if df is None:
@@ -1612,17 +1626,25 @@ while True:
             else:
                 chart_type = "Histogram"
 
+            plot_options = {
+                "show_values": values["-SHOW_VALUES-"],
+                "show_grid": values["-SHOW_GRID-"],
+                "label_size": int(values["-LABEL_SIZE-"]),
+                "chart_title": values["-CHART_TITLE-"] or f"{chart_type} of {col_to_plot}",
+                "color_theme": values["-COLOR_THEME-"]
+
+            }
+
             try:
-                fig = generate_plot(df, col_to_plot, chart_type)
+                fig = generate_plot(df, col_to_plot, chart_type, plot_options)
                 if figure_canvas_agg:
                     figure_canvas_agg.get_tk_widget().forget()
-
                 figure_canvas_agg = draw_figure(window["-CANVAS-"].TKCanvas, fig)
+
 
             except Exception as e:
                 print(f"Error generating plot: {e}")
                 import traceback
-
                 traceback.print_exc()
                 sg.popup(f"Error generating plot: {str(e)}")
 
@@ -1636,17 +1658,14 @@ while True:
                                       default_extension=".png")
         if file_path:
             try:
-                # Ensure file has .png extension
                 if not file_path.lower().endswith('.png'):
                     file_path += '.png'
 
-                # Get the current figure and save it
                 plt.savefig(file_path, dpi=300, bbox_inches='tight')
                 sg.popup(f"Plot saved to {file_path}")
             except Exception as e:
                 sg.popup(f"Error saving plot: {e}")
 
-    # Obsługa czyszczenia danych
     elif event == "-APPLY_MISSING-":
         if df is None:
             sg.popup("Please load the dataset first.")
@@ -1655,51 +1674,89 @@ while True:
             try:
                 df = handle_missing_values(df, strategy)
                 sg.popup(f"Missing values handled with strategy: {strategy}")
-                window["-CLEANED_DATA-"].update(df.head(10).to_string())
+
+                preview_df = df.head(10)
+                table_data = []
+
+                for i, row in preview_df.iterrows():
+                    row_data = [str(i)]
+                    for val in row:
+                        if isinstance(val, (float, int)):
+                            row_data.append(str(round(val, 4)) if val % 1 != 0 else str(int(val)))
+                        else:
+                            row_data.append(str(val))
+                    table_data.append(row_data)
+                window["-CLEANED_DATA-"].update(values=table_data)
+                try:
+                    window["-CLEANED_DATA-"].ColumnHeadings = ["Index"] + list(preview_df.columns)
+                except:
+                    pass
             except Exception as e:
                 sg.popup(f"Error handling missing values: {e}")
 
     elif event == "-SAVE_CLEANED-":
-        # Pokaż okno dialogowe z opcjami zapisu
-        save_window = sg.Window("Save Options", save_options_layout)
+        window_title = f"Save Cleaned Data_{hash(str(df))}"
+        save_window = create_save_options_window(window_title)
         while True:
             save_event, save_values = save_window.read()
             if save_event in (sg.WIN_CLOSED, "-CANCEL_SAVE-"):
                 break
+
             elif save_event == "-CONFIRM_SAVE-":
-                include_index = save_values["-SAVE_INCLUDE_INDEX-"]
-                include_header = save_values["-SAVE_INCLUDE_HEADER-"]
+                unique_suffix = f"_{id(window_title)}_{window_title}"
+                include_index = save_values[f"-SAVE_INCLUDE_INDEX{unique_suffix}"]
+                include_header = save_values[f"-SAVE_INCLUDE_HEADER{unique_suffix}"]
                 save_dataframe_to_csv(df, include_index, include_header)
                 break
         save_window.close()
+        del save_window
 
     elif event == "-REMOVE_DUPLICATES-":
         if df is None:
             sg.popup("Please load the dataset first.")
+
         else:
             try:
                 original_len = len(df)
                 df = remove_duplicates(df)
                 removed_count = original_len - len(df)
                 sg.popup(f"Duplicate rows removed successfully. Removed {removed_count} rows.")
-                window["-CLEANED_DATA-"].update(df.head(10).to_string())
+                preview_df = df.head(10)
+                table_data = []
+
+                for i, row in preview_df.iterrows():
+                    row_data = [str(i)]
+                    for val in row:
+                        if isinstance(val, (float, int)):
+                            row_data.append(str(round(val, 4)) if val % 1 != 0 else str(int(val)))
+                        else:
+                            row_data.append(str(val))
+                    table_data.append(row_data)
+
+                window["-CLEANED_DATA-"].update(values=table_data)
+                try:
+                    window["-CLEANED_DATA-"].ColumnHeadings = ["Index"] + list(preview_df.columns)
+                except:
+                    pass
             except Exception as e:
                 sg.popup(f"Error removing duplicates: {e}")
 
     elif event == "-SAVE_DEDUP-":
-        # Pokaż okno dialogowe z opcjami zapisu
-        save_window = sg.Window("Save Options", save_options_layout)
+        window_title = f"Save After Duplicate Removal_{hash(str(df))}"
+        save_window = create_save_options_window(window_title)
         while True:
             save_event, save_values = save_window.read()
             if save_event in (sg.WIN_CLOSED, "-CANCEL_SAVE-"):
                 break
             elif save_event == "-CONFIRM_SAVE-":
-                include_index = save_values["-SAVE_INCLUDE_INDEX-"]
-                include_header = save_values["-SAVE_INCLUDE_HEADER-"]
+                unique_suffix = f"_{id(window_title)}_{window_title}"
+                include_index = save_values[f"-SAVE_INCLUDE_INDEX{unique_suffix}"]
+                include_header = save_values[f"-SAVE_INCLUDE_HEADER{unique_suffix}"]
                 save_dataframe_to_csv(df, include_index, include_header)
                 break
         save_window.close()
 
+        del save_window
     elif event == "-APPLY_ENCODING-":
         if df is None:
             sg.popup("Please load the dataset first.")
@@ -1724,7 +1781,7 @@ while True:
                         df = target_encoding(df, column, target_column)
                         sg.popup(f"Target Encoding applied to column: {column} using target column: {target_column}")
 
-                # Update UI elements that might display columns
+
                 all_columns = list(df.columns)
                 window["-PLOT_SELECT-"].update(values=all_columns)
                 window["-ENCODE_COL-"].update(values=all_columns)
@@ -1733,22 +1790,37 @@ while True:
                 window["-ALL_REPLACE_COL-"].update(values=all_columns)
                 window["-COL_SELECT-"].update(values=all_columns)
                 window["-SCALE_COL_SELECT-"].update(values=all_columns)
-
-                # Show preview of transformed data
-                window["-CLEANED_DATA-"].update(df.head(10).to_string())
+                preview_df = df.head(10)
+                table_data = []
+                for i, row in preview_df.iterrows():
+                    row_data = [str(i)]
+                    for val in row:
+                        if isinstance(val, (float, int)):
+                            row_data.append(str(round(val, 4)) if val % 1 != 0 else str(int(val)))
+                        else:
+                            row_data.append(str(val))
+                    table_data.append(row_data)
+                window["-CLEANED_DATA-"].update(values=table_data)
+                try:
+                    window["-CLEANED_DATA-"].ColumnHeadings = ["Index"] + list(preview_df.columns)
+                except:
+                    pass
             except Exception as e:
                 sg.popup(f"Error applying encoding: {str(e)}")
 
     elif event == "-SAVE_ENCODED-":
-        # Pokaż okno dialogowe z opcjami zapisu
-        save_window = sg.Window("Save Options", save_options_layout)
+        window_title = f"Save Encoded Data_{hash(str(df))}"
+        save_window = create_save_options_window(window_title)
+
         while True:
             save_event, save_values = save_window.read()
             if save_event in (sg.WIN_CLOSED, "-CANCEL_SAVE-"):
                 break
             elif save_event == "-CONFIRM_SAVE-":
-                include_index = save_values["-SAVE_INCLUDE_INDEX-"]
-                include_header = save_values["-SAVE_INCLUDE_HEADER-"]
+                unique_suffix = f"_{id(window_title)}_{window_title}"
+                include_index = save_values[f"-SAVE_INCLUDE_INDEX{unique_suffix}"]
+                include_header = save_values[f"-SAVE_INCLUDE_HEADER{unique_suffix}"]
                 save_dataframe_to_csv(df, include_index, include_header)
                 break
         save_window.close()
+        del save_window
