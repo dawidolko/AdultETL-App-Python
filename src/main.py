@@ -6,16 +6,17 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from scipy.stats import kurtosis, skew
 from tkinter import filedialog
+import os
+import base64
+from PIL import Image, ImageTk 
 
-# ------------------ Global GUI Settings ------------------ #
+WINDOW_WIDTH = 1200
+WINDOW_HEIGHT = 800
 
 sg.set_options(font=("Helvetica", 12))
 df = None
 original_df = None
 figure_canvas_agg = None
-
-
-# ------------------ Helper Functions ------------------ #
 
 def browse_for_csv_file():
     file_path = filedialog.askopenfilename(
@@ -24,6 +25,29 @@ def browse_for_csv_file():
     )
     return file_path if file_path else None
 
+def set_window_icon(window, icon_path):
+    try:
+        if not os.path.exists(icon_path):
+            print(f"Plik ikony {icon_path} nie istnieje.")
+            if os.path.exists("assets/logo.png"):
+                icon_path = "assets/logo.png"
+            elif os.path.exists("logo.png"):
+                icon_path = "logo.png"
+            else:
+                print("Nie można znaleźć pliku ikony.")
+                return
+        
+        root = window.TKroot
+        
+        icon_image = Image.open(icon_path)
+        
+        icon_photo = ImageTk.PhotoImage(icon_image)
+        
+        root.iconphoto(True, icon_photo)
+        
+        print(f"Ikona aplikacji ustawiona poprawnie z pliku {icon_path}")
+    except Exception as e:
+        print(f"Błąd podczas ustawiania ikony aplikacji: {e}")
 
 def load_dataset(file_path=None, is_predefined=True):
     global original_df
@@ -308,13 +332,60 @@ def compute_statistics(df, dataset_type):
 
 def compute_correlation(df):
     numeric_cols = df.select_dtypes(include=[np.number]).columns
+
+    print(f"Numeric columns for correlation: {numeric_cols}")
+    print(f"Number of numeric columns: {len(numeric_cols)}")
+
     if len(numeric_cols) < 2:
+        print("Not enough numeric columns for correlation")
         return None, None
 
-    pearson_corr = df[numeric_cols].corr(method='pearson')
-    spearman_corr = df[numeric_cols].corr(method='spearman')
+    try:
+        df_clean = df[numeric_cols].dropna()
+        print(f"Computing correlation on {len(df_clean)} rows after dropping NA")
 
-    return pearson_corr, spearman_corr
+        pearson_corr = df_clean.corr(method='pearson')
+        spearman_corr = df_clean.corr(method='spearman')
+
+        print(f"Pearson correlation matrix shape: {pearson_corr.shape}")
+        print(f"Spearman correlation matrix shape: {spearman_corr.shape}")
+
+        if not pearson_corr.empty:
+            first_col = pearson_corr.columns[0]
+            print(
+                f"Sample correlation value - Pearson[{first_col},{first_col}]: {pearson_corr.loc[first_col, first_col]}")
+
+        return pearson_corr, spearman_corr
+    except Exception as e:
+        print(f"Error computing correlation: {e}")
+        import traceback
+        traceback.print_exc()
+        return None, None
+
+
+def format_correlation_matrices(pearson_corr, spearman_corr):
+    if pearson_corr is None or spearman_corr is None or pearson_corr.empty or spearman_corr.empty:
+        return [], [], ["Column"]
+
+    numeric_cols = list(pearson_corr.columns)
+
+    pearson_data = []
+    for idx, row in pearson_corr.iterrows():
+        row_data = [idx] 
+        for col in numeric_cols:
+            row_data.append(round(row[col], 3))
+        pearson_data.append(row_data)
+
+    spearman_data = []
+    for idx, row in spearman_corr.iterrows():
+        row_data = [idx] 
+        for col in numeric_cols:
+            row_data.append(round(row[col], 3))
+        spearman_data.append(row_data)
+
+    headers = ["Column"] + numeric_cols
+
+    return pearson_data, spearman_data, headers
 
 
 def generate_plot(df, column, chart_type, options):
@@ -335,13 +406,13 @@ def generate_plot(df, column, chart_type, options):
     else:
         colors = plt.cm.Set3.colors
 
-    fig, ax = plt.subplots(figsize=(8, 6))
+    fig, ax = plt.subplots(figsize=(8, 5))
 
     if column not in df.columns:
         ax.text(0.5, 0.5, f'Column "{column}" not found.', ha='center', va='center')
         return fig
 
-    plt.subplots_adjust(top=0.85)
+    plt.subplots_adjust(left=0.1, right=0.9, top=0.9, bottom=0.15)
 
     if show_grid:
         ax.grid(True, linestyle='--', alpha=0.7)
@@ -349,14 +420,14 @@ def generate_plot(df, column, chart_type, options):
         ax.grid(False)
 
     if chart_title:
-        ax.set_title(chart_title)
+        ax.set_title(chart_title, fontsize=12)
     else:
-        ax.set_title(f'{chart_type} of {column}')
+        ax.set_title(f'{chart_type} of {column}', fontsize=12)
 
     if chart_type == "Histogram":
         if pd.api.types.is_numeric_dtype(df[column]):
             values = df[column].dropna()
-            n, bins, patches = ax.hist(values, bins=20, color=colors[0], edgecolor='black')
+            n, bins, patches = ax.hist(values, bins=10, color=colors[0], edgecolor='black')
 
             if show_values:
                 y_max = max(n) * 1.1
@@ -366,22 +437,23 @@ def generate_plot(df, column, chart_type, options):
                     if n[i] > 0:
                         x_pos = (bins[i] + bins[i + 1]) / 2
                         y_pos = n[i] + (y_max * 0.02)
-
                         ax.text(x_pos, y_pos, f'{int(n[i])}',
                                 ha='center', va='bottom',
-                                fontsize=label_size, fontweight='bold',
-                                bbox=dict(facecolor='white', edgecolor='black', alpha=0.7,
-                                          boxstyle='round,pad=0.2'))
+                                fontsize=label_size,
+                                bbox=dict(facecolor='white', edgecolor='black', alpha=0.7, boxstyle='round,pad=0.2'))
 
-            ax.set_xlabel(column)
-            ax.set_ylabel('Frequency')
+            ax.set_xlabel(column, fontsize=10)
+            ax.set_ylabel('Frequency', fontsize=10)
 
             stats_text = f"Min: {values.min():.2f}, Max: {values.max():.2f}, Avg: {values.mean():.2f}"
-            ax.text(0.5, 0.97, stats_text, transform=ax.transAxes, ha='center',
-                    bbox=dict(facecolor='white', alpha=0.8))
+            ax.text(0.98, 0.98, stats_text, transform=ax.transAxes, ha='right', va='top',
+                    fontsize=9, bbox=dict(facecolor='white', alpha=0.8, boxstyle='round,pad=0.2'))
 
         else:
             counts = df[column].dropna().value_counts()
+            if len(counts) > 8:
+                counts = counts.sort_values(ascending=False).head(8)
+
             bars = counts.plot(kind='bar', ax=ax, color=colors[0], edgecolor='black')
 
             if show_values:
@@ -391,17 +463,17 @@ def generate_plot(df, column, chart_type, options):
                 for i, v in enumerate(counts):
                     ax.text(i, v + (y_max * 0.02), f'{v}',
                             ha='center', va='bottom',
-                            fontsize=label_size, fontweight='bold',
-                            bbox=dict(facecolor='white', edgecolor='black', alpha=0.7,
-                                      boxstyle='round,pad=0.2'))
+                            fontsize=label_size,
+                            bbox=dict(facecolor='white', edgecolor='black', alpha=0.7, boxstyle='round,pad=0.2'))
 
-            ax.set_xlabel(column)
-            ax.set_ylabel('Count')
+            ax.set_xlabel(column, fontsize=10)
+            ax.set_ylabel('Count', fontsize=10)
+            plt.xticks(rotation=45, ha='right')
 
     elif chart_type == "Boxplot":
         if pd.api.types.is_numeric_dtype(df[column]):
             values = df[column].dropna()
-            boxplot = ax.boxplot(values, patch_artist=True)
+            boxplot = ax.boxplot(values, patch_artist=True, widths=0.5)
 
             for box in boxplot['boxes']:
                 box.set(facecolor=colors[0])
@@ -416,61 +488,62 @@ def generate_plot(df, column, chart_type, options):
 
                 ax.annotate(f'{whisker_min:.2f}',
                             xy=(positions[0], whisker_min),
-                            xytext=(0, -15),
+                            xytext=(-15, 0),
                             textcoords='offset points',
-                            ha='center',
-                            va='bottom',
+                            ha='right', va='center',
                             fontsize=label_size,
-                            bbox=dict(facecolor='white', edgecolor='black', alpha=0.7))
+                            bbox=dict(facecolor='white', edgecolor='black', alpha=0.7, boxstyle='round,pad=0.2'))
 
                 ax.annotate(f'{quartiles[0.25]:.2f}',
                             xy=(positions[0], quartiles[0.25]),
-                            xytext=(-20, 0),
+                            xytext=(-15, 0),
                             textcoords='offset points',
-                            ha='center',
-                            va='bottom',
+                            ha='right', va='center',
                             fontsize=label_size,
-                            bbox=dict(facecolor='white', edgecolor='black', alpha=0.7))
+                            bbox=dict(facecolor='white', edgecolor='black', alpha=0.7, boxstyle='round,pad=0.2'))
 
                 ax.annotate(f'{quartiles[0.5]:.2f}',
                             xy=(positions[0], quartiles[0.5]),
-                            xytext=(0, 0),
+                            xytext=(15, 0),
                             textcoords='offset points',
-                            ha='center',
-                            va='bottom',
+                            ha='left', va='center',
                             fontsize=label_size,
-                            bbox=dict(facecolor='white', edgecolor='black', alpha=0.7))
+                            bbox=dict(facecolor='white', edgecolor='black', alpha=0.7, boxstyle='round,pad=0.2'))
 
                 ax.annotate(f'{quartiles[0.75]:.2f}',
                             xy=(positions[0], quartiles[0.75]),
-                            xytext=(20, 0),
+                            xytext=(15, 0),
                             textcoords='offset points',
-                            ha='center',
-                            va='bottom',
+                            ha='left', va='center',
                             fontsize=label_size,
-                            bbox=dict(facecolor='white', edgecolor='black', alpha=0.7))
+                            bbox=dict(facecolor='white', edgecolor='black', alpha=0.7, boxstyle='round,pad=0.2'))
 
                 ax.annotate(f'{whisker_max:.2f}',
                             xy=(positions[0], whisker_max),
-                            xytext=(0, 15),
+                            xytext=(15, 0),
                             textcoords='offset points',
-                            ha='center',
-                            va='top',
+                            ha='left', va='center',
                             fontsize=label_size,
-                            bbox=dict(facecolor='white', edgecolor='black', alpha=0.7))
+                            bbox=dict(facecolor='white', edgecolor='black', alpha=0.7, boxstyle='round,pad=0.2'))
 
-                ax.text(1.3, values.mean(),
-                        f"Min: {whisker_min:.2f}\nQ1: {quartiles[0.25]:.2f}\nMedian: {quartiles[0.5]:.2f}\nQ3: {quartiles[0.75]:.2f}\nMax: {whisker_max:.2f}",
-                        va='center', fontsize=label_size, bbox=dict(facecolor='lightyellow', alpha=0.8))
+                leg_text = f"Min: {whisker_min:.2f}\nQ1: {quartiles[0.25]:.2f}\nMedian: {quartiles[0.5]:.2f}\nQ3: {quartiles[0.75]:.2f}\nMax: {whisker_max:.2f}"
+                ax.text(1.25, values.mean(), leg_text, va='center', fontsize=10,
+                        bbox=dict(facecolor='lightyellow', alpha=0.8, boxstyle='round,pad=0.2'))
 
-            plt.subplots_adjust(right=0.75)
+            ax.set_ylabel(column, fontsize=10)
+            ax.set_xticklabels([])
 
         else:
-            ax.text(0.5, 0.5, f'Boxplot not applicable for categorical column "{column}".', ha='center', va='center')
+            ax.text(0.5, 0.5, f'Boxplot not applicable for categorical column "{column}".',
+                    ha='center', va='center', fontsize=10)
 
     elif chart_type == "Bar Chart":
         if not pd.api.types.is_numeric_dtype(df[column]):
             counts = df[column].dropna().value_counts()
+
+            if len(counts) > 8:
+                counts = counts.sort_values(ascending=False).head(8)
+
             bars = counts.plot(kind='bar', ax=ax, color=colors, edgecolor='black')
 
             if show_values:
@@ -480,14 +553,14 @@ def generate_plot(df, column, chart_type, options):
                 for i, v in enumerate(counts):
                     ax.text(i, v + (y_max * 0.02), f'{v}',
                             ha='center', va='bottom',
-                            fontsize=label_size, fontweight='bold',
-                            bbox=dict(facecolor='white', edgecolor='black', alpha=0.7,
-                                      boxstyle='round,pad=0.2'))
+                            fontsize=label_size,
+                            bbox=dict(facecolor='white', edgecolor='black', alpha=0.7, boxstyle='round,pad=0.2'))
 
-            ax.set_xlabel(column)
-            ax.set_ylabel('Count')
+            ax.set_xlabel(column, fontsize=10)
+            ax.set_ylabel('Count', fontsize=10)
+            plt.xticks(rotation=45, ha='right')
         else:
-            bins = 10
+            bins = 8
             values = df[column].dropna()
             counts, bin_edges = np.histogram(values, bins=bins)
             width = (bin_edges[1] - bin_edges[0]) * 0.8
@@ -503,21 +576,19 @@ def generate_plot(df, column, chart_type, options):
                     if v > 0:
                         ax.text(center[i], v + (y_max * 0.02), f'{v}',
                                 ha='center', va='bottom',
-                                fontsize=label_size, fontweight='bold',
-                                bbox=dict(facecolor='white', edgecolor='black', alpha=0.7,
-                                          boxstyle='round,pad=0.2'))
+                                fontsize=label_size,
+                                bbox=dict(facecolor='white', edgecolor='black', alpha=0.7, boxstyle='round,pad=0.2'))
 
-            ax.set_xlabel(column)
-            ax.set_ylabel('Frequency')
+            ax.set_xlabel(column, fontsize=10)
+            ax.set_ylabel('Frequency', fontsize=10)
 
+            x_labels = [f'{bin_edges[i]:.1f}-{bin_edges[i + 1]:.1f}' for i in range(len(bin_edges) - 1)]
             ax.set_xticks(center)
-            ax.set_xticklabels([f'{bin_edges[i]:.1f}-{bin_edges[i + 1]:.1f}' for i in range(len(bin_edges) - 1)],
-                               rotation=45, ha='right')
+            ax.set_xticklabels(x_labels, rotation=45, ha='right')
 
     elif chart_type == "Line Plot":
         if pd.api.types.is_numeric_dtype(df[column]):
             values = df[column].dropna().reset_index(drop=True)
-
             values_sorted = values.sort_values().reset_index(drop=True)
 
             q1 = values.quantile(0.25)
@@ -532,27 +603,25 @@ def generate_plot(df, column, chart_type, options):
             regular_indices = np.where(regular_mask)[0]
 
             line = ax.plot(regular_indices, values_sorted[regular_mask],
-                           color=colors[0], marker='o', markersize=5, linestyle='-', linewidth=1,
-                           label='Regular values')
+                           color='blue', marker='o', markersize=5, linestyle='-', linewidth=1, label='Regular values')
 
             y_min, y_max = values_sorted.min(), values_sorted.max()
             y_range = y_max - y_min
             ax.set_ylim(y_min - y_range * 0.1, y_max + y_range * 0.2)
 
-            if show_values and len(regular_indices) > 0:
-                step = max(1, len(regular_indices) // 10)
+            if show_values:
+                step = max(1, len(regular_indices) // 8)
                 for i in range(0, len(regular_indices), step):
                     if i < len(regular_indices):
                         idx = regular_indices[i]
                         val = values_sorted[regular_mask].iloc[i]
-
                         ax.annotate(f'{val:.1f}', (idx, val),
-                                    xytext=(0, 10), textcoords='offset points',
-                                    bbox=dict(facecolor='white', edgecolor='black', alpha=0.7),
+                                    xytext=(0, 8), textcoords='offset points',
+                                    bbox=dict(facecolor='white', edgecolor='black', alpha=0.7,
+                                              boxstyle='round,pad=0.2'),
                                     ha='center', va='bottom', fontsize=label_size)
 
             outlier_indices = np.where(outlier_mask)[0]
-
             if len(outlier_indices) > 0:
                 outliers = ax.scatter(outlier_indices, values_sorted[outlier_mask],
                                       color='red', marker='*', s=100, label='Outliers')
@@ -560,40 +629,41 @@ def generate_plot(df, column, chart_type, options):
                 if show_values:
                     for i, idx in enumerate(outlier_indices):
                         val = values_sorted[outlier_mask].iloc[i]
-
                         ax.annotate(f'{val:.1f}', (idx, val),
                                     xytext=(0, 10), textcoords='offset points',
-                                    bbox=dict(facecolor='yellow', edgecolor='black', alpha=0.9),
+                                    bbox=dict(facecolor='yellow', edgecolor='black', alpha=0.9,
+                                              boxstyle='round,pad=0.2'),
                                     ha='center', va='bottom', fontsize=label_size, fontweight='bold')
 
-            ax.set_xlabel('Index')
-            ax.set_ylabel(column)
+            ax.set_xlabel('Index', fontsize=10)
+            ax.set_ylabel(column, fontsize=10)
             ax.legend()
 
             stats_text = f"Min: {values.min():.2f}, Max: {values.max():.2f}, Avg: {values.mean():.2f}"
             ax.text(0.5, 0.02, stats_text, transform=ax.transAxes, ha='center',
-                    bbox=dict(facecolor='white', alpha=0.8))
+                    bbox=dict(facecolor='white', alpha=0.8, boxstyle='round,pad=0.2'), fontsize=9)
         else:
-            ax.text(0.5, 0.5, f'Line Plot not applicable for categorical column "{column}".', ha='center', va='center')
+            ax.text(0.5, 0.5, f'Line Plot not applicable for categorical column "{column}".',
+                    ha='center', va='center', fontsize=10)
 
     elif chart_type == "Pie Chart":
         if not pd.api.types.is_numeric_dtype(df[column]):
             counts = df[column].dropna().value_counts()
 
-            if len(counts) > 10:
-                others = pd.Series([counts[10:].sum()], index=['Others'])
-                counts = pd.concat([counts[:10], others])
+            if len(counts) > 6:
+                others = pd.Series([counts[6:].sum()], index=['Others'])
+                counts = pd.concat([counts[:6], others])
 
             pie_colors = colors[:len(counts)]
 
             wedges, texts, autotexts = ax.pie(
                 counts,
-                labels=None if show_values else counts.index,
+                labels=None, 
                 autopct='%1.1f%%' if show_values else None,
                 colors=pie_colors,
                 startangle=90,
                 shadow=True,
-                wedgeprops=dict(width=0.6, edgecolor='w')
+                wedgeprops=dict(width=0.5, edgecolor='w')
             )
 
             if show_values:
@@ -603,16 +673,51 @@ def generate_plot(df, column, chart_type, options):
                     autotext.set_bbox(dict(facecolor='white', edgecolor='black', alpha=0.7, boxstyle='round,pad=0.2'))
 
                 labels = [f'{name}: {count} ({count / counts.sum() * 100:.1f}%)' for name, count in counts.items()]
-                ax.legend(wedges, labels, title=column, loc="center left", bbox_to_anchor=(1, 0, 0.5, 1),
-                          fontsize=label_size)
+                ax.legend(wedges, labels, title=column, loc="center left", bbox_to_anchor=(1, 0, 0.5, 1), fontsize=9)
 
-                plt.subplots_adjust(right=0.7)
+                plt.subplots_adjust(right=0.65)
         else:
-            ax.text(0.5, 0.5, f'Pie Chart not applicable for numeric column "{column}".', ha='center', va='center')
+            ax.text(0.5, 0.5, f'Pie Chart not applicable for numeric column "{column}".',
+                    ha='center', va='center', fontsize=10)
 
     plt.tight_layout()
+
     return fig
 
+
+def display_plot_in_new_window(fig, title="Plot Viewer"):
+    plot_layout = [
+        [sg.Canvas(key="-PLOT-CANVAS-", size=(700, 500))],
+        [sg.Button("Save Image", key="-SAVE-PLOT-IMG-"), sg.Button("Close", key="-CLOSE-PLOT-")]
+    ]
+
+    plot_window = sg.Window(title, plot_layout, finalize=True, resizable=True, modal=True)
+
+    figure_canvas_agg = FigureCanvasTkAgg(fig, plot_window["-PLOT-CANVAS-"].TKCanvas)
+    figure_canvas_agg.draw()
+    figure_canvas_agg.get_tk_widget().pack(side='top', fill='both', expand=1)
+
+    while True:
+        plot_event, plot_values = plot_window.read()
+        if plot_event in (sg.WIN_CLOSED, "-CLOSE-PLOT-"):
+            break
+        elif plot_event == "-SAVE-PLOT-IMG-":
+            file_path = sg.popup_get_file('Save plot as image', save_as=True,
+                                          file_types=(("PNG Files", "*.png"), ("JPEG Files", "*.jpg"),
+                                                      ("PDF Files", "*.pdf"), ("All Files", "*.*")),
+                                          default_extension=".png")
+            if file_path:
+                try:
+                    if not any(file_path.lower().endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.pdf']):
+                        file_path += '.png'
+
+                    fig.savefig(file_path, dpi=300, bbox_inches='tight')
+                    sg.popup(f"Image saved to {file_path}")
+                except Exception as e:
+                    sg.popup(f"Error saving image: {e}")
+
+    plot_window.close()
+    plt.close(fig)
 
 def draw_figure(canvas, figure):
     for child in canvas.winfo_children():
@@ -719,6 +824,40 @@ def extract_subtable(df, row_indices=None, col_indices=None, keep=False):
     print(f"Final dataframe has {len(result_df)} rows and {len(result_df.columns)} columns")
     return result_df
 
+def update_table_headers(window, table_key, df, prefix_col="Index"):
+    try:
+        window[table_key].update(visible=False)
+
+        headers = [prefix_col] + list(df.columns)
+
+        window[table_key].ColumnHeadings = headers
+
+        window[table_key].update(visible=True)
+
+        return True
+    except Exception as e:
+        print(f"Error updating {table_key} headers: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+def dataframe_to_table_data(df, max_rows=None):
+    if max_rows is not None:
+        df = df.head(max_rows)
+
+    table_data = []
+    for i, row in df.iterrows():
+        row_data = [str(i)]
+
+        for val in row:
+            if isinstance(val, (float, int)):
+                row_data.append(str(round(val, 4)) if val % 1 != 0 else str(int(val)))
+            else:
+                row_data.append(str(val))
+
+        table_data.append(row_data)
+
+    return table_data
 
 def remove_columns(df, cols_to_remove):
     for c in cols_to_remove:
@@ -878,8 +1017,6 @@ def add_symbolic_column(df):
         )
     return df
 
-# ------------------ Layout Definition ------------------ #
-
 # Tab 0: Logo & Creators Info
 tab0_layout = [
     [sg.Text("", size=(1, 1))],
@@ -894,7 +1031,7 @@ tab0_layout = [
     [sg.Text("", size=(1, 1))],
 ]
 
-# Tab 1: Data & Statistics - zmodyfikowana z rozwijalnymi listami i przyciskami do zapisu/przywrócenia
+# Tab 1: Data & Statistics
 tab1_layout = [
     [sg.Column([
         [sg.Frame("Load Data", [
@@ -919,38 +1056,17 @@ tab1_layout = [
                       headings=["Column", "Min", "Max", "Mean", "Median", "Std", "Mode", "Variance", "Skewness",
                                 "Kurtosis"],
                       key="-NUMERIC_STATS-", auto_size_columns=True, justification='center',
-                      expand_x=True, expand_y=True, size=(800, 10))],
+                      expand_x=True, expand_y=True, size=(1100, 10))],
 
             [sg.Text("Categorical Columns Statistics:")],
             [sg.Table(values=[], headings=["Column", "Value Counts", "Mode"],
                       key="-CATEGORICAL_STATS-", auto_size_columns=True, justification='center',
                       expand_x=True, expand_y=True, size=(800, 10))]
         ], expand_x=True)],
-
-        [sg.Frame("Correlation Results", [
-            [sg.Text("Pearson Correlation Matrix:")],
-            [sg.Table(values=[],
-                      headings=["Column", "col1", "col2", "col3", "col4", "col5", "col6"],
-                      key="-PEARSON_CORR-",
-                      auto_size_columns=True,
-                      justification='center',
-                      expand_x=True,
-                      size=(800, 10),
-                      display_row_numbers=False)],
-            [sg.Text("Spearman Correlation Matrix:")],
-            [sg.Table(values=[],
-                      headings=["Column", "col1", "col2", "col3", "col4", "col5", "col6"],
-                      key="-SPEARMAN_CORR-",
-                      auto_size_columns=True,
-                      justification='center',
-                      expand_x=True,
-                      size=(800, 10),
-                      display_row_numbers=False)]
-        ], expand_x=True)],
     ], scrollable=True, vertical_scroll_only=True, expand_x=True, expand_y=True, size=(1180, 750))]
 ]
 
-# Tab 2: Extract Subtable - zmodyfikowana z rozwijalnymi listami i tabelą zamiast Multiline
+# Tab 2: Extract Subtable
 tab2_layout = [
     [sg.Frame("Subtable Extraction", [
         [sg.Radio("Remove Rows/Columns", "EXTRACTION_TYPE", default=True, key="-REMOVE_EXTRACT-"),
@@ -969,15 +1085,7 @@ tab2_layout = [
         [sg.Button("Extract Subtable", key="-EXTRACT_BTN-"),
          sg.Button("Save Subtable", key="-SAVE_SUBTABLE-")],
 
-        [sg.Table(values=[[]],
-                 headings=["Index"] + ["Column 1", "Column 2", "Column 3", "Column 4", "Column 5"],
-                 key="-EXTRACT_OUT-",
-                 auto_size_columns=True,
-                 justification='center',
-                 num_rows=10,
-                 vertical_scroll_only=False,
-                 expand_x=True)]
-    ], size=(900, 450))],
+    ], size=(1100, 150))],
 
     [sg.Frame("Value Replacement", [
         [sg.Text("Select Column:"),
@@ -1000,10 +1108,10 @@ tab2_layout = [
          sg.InputText(key="-ALL_NEW_VAL-", size=(30, 1))],
 
         [sg.Button("Replace All Values", key="-REPLACE_ALL_BTN-")]
-    ], size=(900, 300))]
+    ], size=(1100, 300))]
 ]
 
-# Tab 3: Scaling & Visualization - zmodyfikowana z rozwijalnymi listami
+# Tab 3: Scaling & Visualization
 tab3_layout = [
     [sg.Frame("Data Scaling", [
         [sg.Text("Columns to Scale:"),
@@ -1019,17 +1127,9 @@ tab3_layout = [
         [sg.Button("Apply Scaling", key="-APPLY_SCALING-"),
          sg.Button("Save Scaled Data", key="-SAVE_SCALED-"),
          sg.Button("Restore Original", key="-RESTORE_SCALED-")],
+    ], size=(1200, 150))],
 
-        [sg.Table(values=[[]],
-                 headings=["Index"] + ["Column 1", "Column 2", "Column 3", "Column 4", "Column 5"],
-                 key="-SCALED_DATA-",
-                 auto_size_columns=True,
-                 justification='center',
-                 num_rows=8,
-                 expand_x=True)]
-    ], size=(1000, 350))],
-
-    [sg.Column([  # Dodaję przewijalną kolumnę
+    [sg.Column([
         [sg.Frame("Data Visualization", [
             [sg.Text("Select Column to Plot:"),
              sg.Combo([], key="-PLOT_SELECT-", size=(30, 1))],
@@ -1058,25 +1158,25 @@ tab3_layout = [
              sg.Button("Save Plot as Image", key="-SAVE_PLOT-")],
 
             [sg.Column([
-                [sg.Canvas(key="-CANVAS-", size=(800, 600))]
-            ], scrollable=True, vertical_scroll_only=True, size=(900, 500))]
+                [sg.Canvas(key="-CANVAS-", size=(1100, 150))]
+            ], vertical_scroll_only=True, size=(1200, 200))]
         ])]
-    ], scrollable=True, vertical_scroll_only=True, expand_x=True, size=(900, 700))]
+    ])]
 ]
 
-# Tab 4: Data Cleaning & Transformation - zmodyfikowana z rozwijalnymi listami
+# Tab 4: Data Cleaning & Transformation
 tab4_layout = [
     [sg.Frame("Handling Missing Values", [
         [sg.Combo(["remove", "fill_mean", "fill_median", "fill_mode"], default_value="remove",
                   key="-MISSING_STRATEGY-"),
          sg.Button("Apply Missing Values Handling", key="-APPLY_MISSING-"),
          sg.Button("Save Cleaned Data", key="-SAVE_CLEANED-")]
-    ], size=(1000, 50))],
+    ], size=(1200, 50))],
 
     [sg.Frame("Duplicates", [
         [sg.Button("Remove Duplicates", key="-REMOVE_DUPLICATES-"),
          sg.Button("Save After Duplicate Removal", key="-SAVE_DEDUP-")]
-    ], size=(1000, 50))],
+    ], size=(1200, 50))],
 
     [sg.Frame("Encoding", [
         [sg.Text("Select Column to Encode:"),
@@ -1091,19 +1191,7 @@ tab4_layout = [
 
         [sg.Button("Apply Encoding", key="-APPLY_ENCODING-"),
          sg.Button("Save Encoded Data", key="-SAVE_ENCODED-")]
-    ], size=(1000, 150))],
-
-    [sg.Frame("Data Preview", [
-        [sg.Table(values=[[]],
-                  headings=["Index"] + ["Column 1", "Column 2", "Column 3", "Column 4", "Column 5"],
-                  key="-CLEANED_DATA-",
-                  auto_size_columns=True,
-                  justification='center',
-                  num_rows=10,
-                  vertical_scroll_only=False,
-                  expand_x=True,
-                  )]
-    ], size=(1000, 500))]
+    ], size=(1200, 150))],
 ]
 
 save_options_layout = [
@@ -1125,13 +1213,42 @@ layout = [
             sg.Tab("Scaling & Visualization", tab3_layout, expand_x=True, expand_y=True, background_color=background_color),
             sg.Tab("Data Cleaning & Transformation", tab4_layout, expand_x=True, expand_y=True, background_color=background_color)
         ]], tab_location='top', font=("Helvetica", 14, "bold"), expand_x=True, expand_y=True, key='-TABGROUP-',
-            size=(1000, 800))]
+            size=(1200, 800))]
     ], scrollable=False, expand_x=True, expand_y=True)]
 ]
 
-window = sg.Window("DataFusion - Project", layout, resizable=True, finalize=True, element_justification='center')
+window = sg.Window("DataFusion - Project", 
+                   layout, 
+                   size=(WINDOW_WIDTH, WINDOW_HEIGHT),
+                   resizable=False, 
+                   finalize=True,
+                   element_justification='center')
 
-# ------------------ Event Loop ------------------ #
+set_window_icon(window, "assets/logo.png")
+
+try:
+    root = window.TKroot
+    
+    root.resizable(False, False)
+    
+    screen_width = root.winfo_screenwidth()
+    screen_height = root.winfo_screenheight()
+    x = (screen_width - WINDOW_WIDTH) // 2
+    y = (screen_height - WINDOW_HEIGHT) // 2
+    root.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}+{x}+{y}")
+    
+    if os.name == 'nt':
+        import ctypes
+        from ctypes import windll
+        
+        hwnd = windll.user32.GetParent(root.winfo_id())
+        
+        style = windll.user32.GetWindowLongW(hwnd, -16) 
+        style = style & ~0x10000 
+        windll.user32.SetWindowLongW(hwnd, -16, style)
+except Exception as e:
+    print(f"Błąd podczas konfiguracji okna: {e}")
+
 while True:
     event, values = window.read()
     if event == sg.WIN_CLOSED:
@@ -1251,47 +1368,135 @@ while True:
     elif event == "-CORR-":
         if df is None:
             sg.popup("Please load the dataset first.")
-
         else:
-            pearson_corr, spearman_corr = compute_correlation(df)
-            if pearson_corr is None or spearman_corr is None:
-                sg.popup("Not enough numeric columns for correlation.")
-
-            else:
-                headers = ["Column"] + list(pearson_corr.columns)
-                pearson_data = []
-
-                for idx, row in pearson_corr.iterrows():
-                    row_data = [idx]
-                    for val in row:
-                        row_data.append(round(val, 3))
-                    pearson_data.append(row_data)
-                spearman_data = []
-
-                for idx, row in spearman_corr.iterrows():
-                    row_data = [idx]
-
-                    for val in row:
-                        row_data.append(round(val, 3))
-                    spearman_data.append(row_data)
-                window["-PEARSON_CORR-"].update(values=pearson_data, num_rows=min(10, len(pearson_data)))
-                if len(headers) > 0:
-
+            try:
+                pearson_corr, spearman_corr = compute_correlation(df)
+                if pearson_corr is None or spearman_corr is None or pearson_corr.empty or spearman_corr.empty:
+                    sg.popup("Not enough numeric columns for correlation or error in computation.")
+                else:
+                    numeric_cols = list(pearson_corr.columns)
+                    pearson_data = []
+                    for idx, row in pearson_corr.iterrows():
+                        row_data = [idx]
+                        for col in numeric_cols:
+                            row_data.append(round(row[col], 3))
+                        pearson_data.append(row_data)
+                    spearman_data = []
+                    for idx, row in spearman_corr.iterrows():
+                        row_data = [idx]
+                        for col in numeric_cols:
+                            row_data.append(round(row[col], 3))
+                        spearman_data.append(row_data)
+                    headers = ["Column"] + numeric_cols
                     try:
-                        window["-PEARSON_CORR-"].update(visible=False)
-                        window["-PEARSON_CORR-"].update(values=pearson_data, visible=True)
-                        window["-PEARSON_CORR-"].ColumnHeadings = headers
-                    except:
-                        pass
-                window["-SPEARMAN_CORR-"].update(values=spearman_data, num_rows=min(10, len(spearman_data)))
-
-                if len(headers) > 0:
-                    try:
-                        window["-SPEARMAN_CORR-"].update(visible=False)
-                        window["-SPEARMAN_CORR-"].update(values=spearman_data, visible=True)
-                        window["-SPEARMAN_CORR-"].ColumnHeadings = headers
-                    except:
-                        pass
+                        correlation_frame = None
+                        for element in window.element_list():
+                            if isinstance(element, sg.Frame) and element.Title == "Correlation Results":
+                                correlation_frame = element
+                                break
+                        if correlation_frame:
+                            correlation_frame.update(visible=False)
+                            new_correlation_layout = [
+                                [sg.Text("Pearson Correlation Matrix:")],
+                                [sg.Table(values=pearson_data,
+                                          headings=headers,
+                                          key="-PEARSON_CORR_NEW-",
+                                          auto_size_columns=True,
+                                          justification='center',
+                                          expand_x=True,
+                                          size=(800, len(pearson_data)),
+                                          display_row_numbers=False)],
+                                [sg.Text("Spearman Correlation Matrix:")],
+                                [sg.Table(values=spearman_data,
+                                          headings=headers,
+                                          key="-SPEARMAN_CORR_NEW-",
+                                          auto_size_columns=True,
+                                          justification='center',
+                                          expand_x=True,
+                                          size=(800, len(spearman_data)),
+                                          display_row_numbers=False)]
+                            ]
+                            new_correlation_frame = sg.Frame("Correlation Results", new_correlation_layout, expand_x=True)
+                            corr_window = sg.Window("Correlation Results",
+                                                    [[new_correlation_frame]],
+                                                    modal=True,
+                                                    finalize=True,
+                                                    resizable=True)
+                            while True:
+                                corr_event, corr_values = corr_window.read()
+                                if corr_event == sg.WIN_CLOSED:
+                                    break
+                            corr_window.close()
+                            correlation_frame.update(visible=True)
+                        else:
+                            sg.popup("Find Correlation Results frame, displaying in new window.")
+                            corr_window = sg.Window("Correlation Results",
+                                                    [[sg.Frame("Correlation Results", [
+                                                        [sg.Text("Pearson Correlation Matrix:")],
+                                                        [sg.Table(values=pearson_data,
+                                                                  headings=headers,
+                                                                  key="-PEARSON_CORR_NEW-",
+                                                                  auto_size_columns=True,
+                                                                  justification='center',
+                                                                  expand_x=True,
+                                                                  size=(800, len(pearson_data)),
+                                                                  display_row_numbers=False)],
+                                                        [sg.Text("Spearman Correlation Matrix:")],
+                                                        [sg.Table(values=spearman_data,
+                                                                  headings=headers,
+                                                                  key="-SPEARMAN_CORR_NEW-",
+                                                                  auto_size_columns=True,
+                                                                  justification='center',
+                                                                  expand_x=True,
+                                                                  size=(800, len(spearman_data)),
+                                                                  display_row_numbers=False)]
+                                                    ])]],
+                                                    modal=True,
+                                                    finalize=True,
+                                                    resizable=True)
+                            while True:
+                                corr_event, corr_values = corr_window.read()
+                                if corr_event == sg.WIN_CLOSED:
+                                    break
+                            corr_window.close()
+                    except Exception as e:
+                        print(f"Error updating correlation frame: {e}")
+                        import traceback
+                        traceback.print_exc()
+                        corr_window = sg.Window("Correlation Results",
+                                                [[sg.Frame("Correlation Results", [
+                                                    [sg.Text("Pearson Correlation Matrix:")],
+                                                    [sg.Table(values=pearson_data,
+                                                              headings=headers,
+                                                              key="-PEARSON_CORR_NEW-",
+                                                              auto_size_columns=True,
+                                                              justification='center',
+                                                              expand_x=True,
+                                                              size=(800, len(pearson_data)),
+                                                              display_row_numbers=False)],
+                                                    [sg.Text("Spearman Correlation Matrix:")],
+                                                    [sg.Table(values=spearman_data,
+                                                              headings=headers,
+                                                              key="-SPEARMAN_CORR_NEW-",
+                                                              auto_size_columns=True,
+                                                              justification='center',
+                                                              expand_x=True,
+                                                              size=(800, len(spearman_data)),
+                                                              display_row_numbers=False)]
+                                                ])]],
+                                                modal=True,
+                                                finalize=True,
+                                                resizable=True)
+                        while True:
+                            corr_event, corr_values = corr_window.read()
+                            if corr_event == sg.WIN_CLOSED:
+                                break
+                        corr_window.close()
+            except Exception as e:
+                print(f"Error in correlation calculation: {e}")
+                import traceback
+                traceback.print_exc()
+                sg.popup(f"Error calculating correlation: {str(e)}")
 
     elif event == "-ADD_COL-":
         if df is None:
@@ -1350,9 +1555,9 @@ while True:
                 if sub_df is None or sub_df.empty:
                     window["-EXTRACT_OUT-"].update(values=[[]])
                     sg.popup("Invalid range or empty subtable.")
-
                 else:
                     display_df = sub_df.head(10)
+
                     table_data = []
                     for i, row in display_df.iterrows():
                         row_data = [str(i)]
@@ -1362,18 +1567,46 @@ while True:
                             else:
                                 row_data.append(str(val))
                         table_data.append(row_data)
-                    window["-EXTRACT_OUT-"].update(values=table_data)
-                    try:
-                        window["-EXTRACT_OUT-"].ColumnHeadings = ["Index"] + list(display_df.columns)
-                    except:
-                        pass
+
+                    headers = ["Index"] + list(display_df.columns)
+
+                    subtable_layout = [
+                        [sg.Text(f"Subtable Results (showing {len(table_data)} of {len(sub_df)} rows)")],
+                        [sg.Table(
+                            values=table_data,
+                            headings=headers,
+                            key="-SUBTABLE_RESULT-",
+                            auto_size_columns=True,
+                            justification='center',
+                            expand_x=True,
+                            num_rows=min(20, len(table_data)),
+                            display_row_numbers=False
+                        )],
+                        [sg.Button("Close", key="-CLOSE_SUBTABLE-")]
+                    ]
+
+                    subtable_window = sg.Window(
+                        "Subtable Results",
+                        [[sg.Frame("Extracted Subtable", subtable_layout)]],
+                        modal=True,
+                        finalize=True,
+                        resizable=True,
+                        size=(800, 600)
+                    )
+
+                    while True:
+                        subtable_event, subtable_values = subtable_window.read()
+                        if subtable_event in (sg.WIN_CLOSED, "-CLOSE_SUBTABLE-"):
+                            break
+
+                    subtable_window.close()
+
                     df = sub_df
-                    if len(sub_df) > 10:
-                        sg.popup(f"Showing first 10 of {len(sub_df)} rows")
 
             except Exception as e:
                 print(f"Error in subtable extraction: {e}")
                 import traceback
+
                 traceback.print_exc()
                 sg.popup(f"Error extracting subtable: {e}")
 
@@ -1420,14 +1653,12 @@ while True:
     elif event == "-REPLACE_BTN-":
         if df is None:
             sg.popup("Please load the dataset first.")
-
         else:
             col_to_replace = values["-REPLACE_COL-"]
             old_value = values["-OLD_VAL-"]
             new_value = values["-NEW_VAL-"]
             if not col_to_replace or not old_value or not new_value:
                 sg.popup("Please fill in all fields for column, old value, and new value.")
-
             else:
                 try:
                     temp_df = df.copy()
@@ -1436,6 +1667,7 @@ while True:
 
                     if changes_made:
                         display_df = df.head(10)
+
                         table_data = []
                         for i, row in display_df.iterrows():
                             row_data = [str(i)]
@@ -1445,11 +1677,41 @@ while True:
                                 else:
                                     row_data.append(str(val))
                             table_data.append(row_data)
-                        window["-EXTRACT_OUT-"].update(values=table_data)
-                        try:
-                            window["-EXTRACT_OUT-"].ColumnHeadings = ["Index"] + list(display_df.columns)
-                        except:
-                            pass
+
+                        headers = ["Index"] + list(display_df.columns)
+
+                        replace_layout = [
+                            [sg.Text(
+                                f"Replacement Results: '{old_value}' -> '{new_value}' in column '{col_to_replace}'")],
+                            [sg.Table(
+                                values=table_data,
+                                headings=headers,
+                                key="-REPLACE_RESULT-",
+                                auto_size_columns=True,
+                                justification='center',
+                                expand_x=True,
+                                num_rows=min(20, len(table_data)),
+                                display_row_numbers=False
+                            )],
+                            [sg.Button("Close", key="-CLOSE_REPLACE-")]
+                        ]
+
+                        replace_window = sg.Window(
+                            "Replace Results",
+                            [[sg.Frame("Data After Replacement", replace_layout)]],
+                            modal=True,
+                            finalize=True,
+                            resizable=True,
+                            size=(800, 600)
+                        )
+
+                        while True:
+                            replace_event, replace_values = replace_window.read()
+                            if replace_event in (sg.WIN_CLOSED, "-CLOSE_REPLACE-"):
+                                break
+
+                        replace_window.close()
+
                         sg.popup(f"Replaced '{old_value}' with '{new_value}' in column '{col_to_replace}'")
                         unique_values = df[col_to_replace].dropna().unique().tolist()
                         unique_values = [str(val) for val in unique_values]
@@ -1457,6 +1719,10 @@ while True:
                     else:
                         sg.popup(f"No values '{old_value}' found in column '{col_to_replace}' to replace.")
                 except Exception as e:
+                    print(f"Error replacing values: {e}")
+                    import traceback
+
+                    traceback.print_exc()
                     sg.popup(f"Error replacing values: {e}")
 
     elif event == "-SAVE_REPLACED-":
@@ -1474,6 +1740,7 @@ while True:
                 break
         save_window.close()
         del save_window
+
     elif event == "-REPLACE_ALL_BTN-":
         if df is None:
             sg.popup("Please load the dataset first.")
@@ -1482,13 +1749,12 @@ while True:
             new_value_all = values["-ALL_NEW_VAL-"]
             if not col_to_replace_all or not new_value_all:
                 sg.popup("Please fill in all fields for column and new value.")
-
             else:
                 try:
-                    temp_df = df.copy()
                     df = replace_all_values(df, col_to_replace_all, new_value_all)
                     if col_to_replace_all in df.columns:
                         display_df = df.head(10)
+
                         table_data = []
                         for i, row in display_df.iterrows():
                             row_data = [str(i)]
@@ -1498,16 +1764,49 @@ while True:
                                 else:
                                     row_data.append(str(val))
                             table_data.append(row_data)
-                        window["-EXTRACT_OUT-"].update(values=table_data)
 
-                        try:
-                            window["-EXTRACT_OUT-"].ColumnHeadings = ["Index"] + list(display_df.columns)
-                        except:
-                            pass
+                        headers = ["Index"] + list(display_df.columns)
+
+                        replace_all_layout = [
+                            [sg.Text(
+                                f"Replacement Results: All values in '{col_to_replace_all}' -> '{new_value_all}'")],
+                            [sg.Table(
+                                values=table_data,
+                                headings=headers,
+                                key="-REPLACE_ALL_RESULT-",
+                                auto_size_columns=True,
+                                justification='center',
+                                expand_x=True,
+                                num_rows=min(20, len(table_data)),
+                                display_row_numbers=False
+                            )],
+                            [sg.Button("Close", key="-CLOSE_REPLACE_ALL-")]
+                        ]
+
+                        replace_all_window = sg.Window(
+                            "Replace All Results",
+                            [[sg.Frame("Data After Replacement", replace_all_layout)]],
+                            modal=True,
+                            finalize=True,
+                            resizable=True,
+                            size=(800, 600)
+                        )
+
+                        while True:
+                            replace_all_event, replace_all_values = replace_all_window.read()
+                            if replace_all_event in (sg.WIN_CLOSED, "-CLOSE_REPLACE_ALL-"):
+                                break
+
+                        replace_all_window.close()
+
                         sg.popup(f"Replaced all values in column '{col_to_replace_all}' with '{new_value_all}'")
                     else:
                         sg.popup(f"Column '{col_to_replace_all}' does not exist in the dataframe.")
                 except Exception as e:
+                    print(f"Error replacing all values: {e}")
+                    import traceback
+
+                    traceback.print_exc()
                     sg.popup(f"Error replacing all values: {e}")
 
     elif event == "-ADD_SCALE_COL-":
@@ -1542,34 +1841,77 @@ while True:
     elif event == "-APPLY_SCALING-":
         if df is None:
             sg.popup("Please load the dataset first.")
-
         else:
             cols_str = values["-SELECTED_SCALE_COLS-"]
             cols_list = [c.strip() for c in cols_str.split(",") if c.strip() != ""]
+
             if not cols_list:
                 sg.popup("Please enter column names to scale, separated by commas.")
                 continue
+
             method = "standard" if values["-STD_SCALER-"] else "minmax"
+
             try:
                 scaled_df = scale_columns(df, cols_list, method=method)
+
                 for col in cols_list:
                     if col in scaled_df.columns and col in df.columns:
                         df[col] = scaled_df[col]
+
                 preview_df = df[cols_list].head(10)
-                data_rows = [preview_df.index.astype(str).tolist()] + preview_df.values.tolist()
-                table_data = [[str(data_rows[0][i])] + [str(round(val, 4)) if isinstance(val, (int, float)) else str(val)
-                                                        for val in row]
-                              for i, row in enumerate(data_rows[1:])]
 
-                window["-SCALED_DATA-"].update(values=table_data)
+                table_data = []
+                for i, row in preview_df.iterrows():
+                    row_data = [str(i)]
+                    for val in row:
+                        if isinstance(val, (float, int)):
+                            row_data.append(str(round(val, 4)) if val % 1 != 0 else str(int(val)))
+                        else:
+                            row_data.append(str(val))
+                    table_data.append(row_data)
 
-                try:
-                    window["-SCALED_DATA-"].ColumnHeadings = ["Index"] + list(preview_df.columns)
-                except:
-                    pass
+                headers = ["Index"] + list(preview_df.columns)
+
+                scaling_layout = [
+                    [sg.Text(f"Scaling Results using {method.capitalize()} Scaler")],
+                    [sg.Table(
+                        values=table_data,
+                        headings=headers,
+                        key="-SCALING_RESULT-",
+                        auto_size_columns=True,
+                        justification='center',
+                        expand_x=True,
+                        num_rows=min(20, len(table_data)),
+                        display_row_numbers=False
+                    )],
+                    [sg.Button("Close", key="-CLOSE_SCALING-")]
+                ]
+
+                scaling_window = sg.Window(
+                    "Scaling Results",
+                    [[sg.Frame(f"{method.capitalize()} Scaling Results", scaling_layout)]],
+                    modal=True,
+                    finalize=True,
+                    resizable=True,
+                    size=(800, 500)
+                )
+
+                while True:
+                    scaling_event, scaling_values = scaling_window.read()
+                    if scaling_event in (sg.WIN_CLOSED, "-CLOSE_SCALING-"):
+                        break
+
+                scaling_window.close()
+
                 sg.popup(f"Applied {method} scaling to columns: {', '.join(cols_list)}")
+
             except Exception as e:
+                print(f"Error scaling columns: {e}")
+                import traceback
+
+                traceback.print_exc()
                 sg.popup(f"Error scaling columns: {str(e)}")
+
     elif event == "-SAVE_SCALED-":
         window_title = f"Save Scaled Data_{hash(str(df))}"
         save_window = create_save_options_window(window_title)
@@ -1632,19 +1974,15 @@ while True:
                 "label_size": int(values["-LABEL_SIZE-"]),
                 "chart_title": values["-CHART_TITLE-"] or f"{chart_type} of {col_to_plot}",
                 "color_theme": values["-COLOR_THEME-"]
-
             }
 
             try:
                 fig = generate_plot(df, col_to_plot, chart_type, plot_options)
-                if figure_canvas_agg:
-                    figure_canvas_agg.get_tk_widget().forget()
-                figure_canvas_agg = draw_figure(window["-CANVAS-"].TKCanvas, fig)
-
-
+                display_plot_in_new_window(fig, title=f"{chart_type} of {col_to_plot}")
             except Exception as e:
                 print(f"Error generating plot: {e}")
                 import traceback
+
                 traceback.print_exc()
                 sg.popup(f"Error generating plot: {str(e)}")
 
@@ -1673,11 +2011,10 @@ while True:
             strategy = values["-MISSING_STRATEGY-"]
             try:
                 df = handle_missing_values(df, strategy)
-                sg.popup(f"Missing values handled with strategy: {strategy}")
 
                 preview_df = df.head(10)
-                table_data = []
 
+                table_data = []
                 for i, row in preview_df.iterrows():
                     row_data = [str(i)]
                     for val in row:
@@ -1686,12 +2023,47 @@ while True:
                         else:
                             row_data.append(str(val))
                     table_data.append(row_data)
-                window["-CLEANED_DATA-"].update(values=table_data)
-                try:
-                    window["-CLEANED_DATA-"].ColumnHeadings = ["Index"] + list(preview_df.columns)
-                except:
-                    pass
+
+                headers = ["Index"] + list(preview_df.columns)
+
+                cleaning_layout = [
+                    [sg.Text(f"Missing Values Handling Results using '{strategy}' strategy")],
+                    [sg.Table(
+                        values=table_data,
+                        headings=headers,
+                        key="-MISSING_RESULT-",
+                        auto_size_columns=True,
+                        justification='center',
+                        expand_x=True,
+                        num_rows=min(20, len(table_data)),
+                        display_row_numbers=False
+                    )],
+                    [sg.Button("Close", key="-CLOSE_MISSING-")]
+                ]
+
+                cleaning_window = sg.Window(
+                    "Missing Values Handling",
+                    [[sg.Frame(f"Data After {strategy.replace('_', ' ').title()}", cleaning_layout)]],
+                    modal=True,
+                    finalize=True,
+                    resizable=True,
+                    size=(900, 500)
+                )
+
+                while True:
+                    cleaning_event, cleaning_values = cleaning_window.read()
+                    if cleaning_event in (sg.WIN_CLOSED, "-CLOSE_MISSING-"):
+                        break
+
+                cleaning_window.close()
+
+                sg.popup(f"Missing values handled with strategy: {strategy}")
+
             except Exception as e:
+                print(f"Error handling missing values: {e}")
+                import traceback
+
+                traceback.print_exc()
                 sg.popup(f"Error handling missing values: {e}")
 
     elif event == "-SAVE_CLEANED-":
@@ -1714,16 +2086,17 @@ while True:
     elif event == "-REMOVE_DUPLICATES-":
         if df is None:
             sg.popup("Please load the dataset first.")
-
         else:
             try:
                 original_len = len(df)
-                df = remove_duplicates(df)
-                removed_count = original_len - len(df)
-                sg.popup(f"Duplicate rows removed successfully. Removed {removed_count} rows.")
-                preview_df = df.head(10)
-                table_data = []
 
+                df = remove_duplicates(df)
+
+                removed_count = original_len - len(df)
+
+                preview_df = df.head(10)
+
+                table_data = []
                 for i, row in preview_df.iterrows():
                     row_data = [str(i)]
                     for val in row:
@@ -1733,12 +2106,46 @@ while True:
                             row_data.append(str(val))
                     table_data.append(row_data)
 
-                window["-CLEANED_DATA-"].update(values=table_data)
-                try:
-                    window["-CLEANED_DATA-"].ColumnHeadings = ["Index"] + list(preview_df.columns)
-                except:
-                    pass
+                headers = ["Index"] + list(preview_df.columns)
+
+                dedup_layout = [
+                    [sg.Text(f"Duplicate Removal Results - Removed {removed_count} rows")],
+                    [sg.Table(
+                        values=table_data,
+                        headings=headers,
+                        key="-DEDUP_RESULT-",
+                        auto_size_columns=True,
+                        justification='center',
+                        expand_x=True,
+                        num_rows=min(20, len(table_data)),
+                        display_row_numbers=False
+                    )],
+                    [sg.Button("Close", key="-CLOSE_DEDUP-")]
+                ]
+
+                dedup_window = sg.Window(
+                    "Duplicate Removal",
+                    [[sg.Frame("Data After Duplicate Removal", dedup_layout)]],
+                    modal=True,
+                    finalize=True,
+                    resizable=True,
+                    size=(900, 500)
+                )
+
+                while True:
+                    dedup_event, dedup_values = dedup_window.read()
+                    if dedup_event in (sg.WIN_CLOSED, "-CLOSE_DEDUP-"):
+                        break
+
+                dedup_window.close()
+
+                sg.popup(f"Duplicate rows removed successfully. Removed {removed_count} rows.")
+
             except Exception as e:
+                print(f"Error removing duplicates: {e}")
+                import traceback
+
+                traceback.print_exc()
                 sg.popup(f"Error removing duplicates: {e}")
 
     elif event == "-SAVE_DEDUP-":
@@ -1757,6 +2164,7 @@ while True:
         save_window.close()
 
         del save_window
+
     elif event == "-APPLY_ENCODING-":
         if df is None:
             sg.popup("Please load the dataset first.")
@@ -1767,30 +2175,23 @@ while True:
                 continue
 
             try:
+                encoding_method = ""
                 if values["-ONE_HOT-"]:
                     df = one_hot_encoding(df, column)
-                    sg.popup(f"One-Hot Encoding applied to column: {column}")
+                    encoding_method = "One-Hot Encoding"
                 elif values["-BINARY_ENCODE-"]:
                     df = binary_encoding(df, column)
-                    sg.popup(f"Binary Encoding applied to column: {column}")
+                    encoding_method = "Binary Encoding"
                 elif values["-TARGET_ENCODE-"]:
                     target_column = values["-TARGET_COL-"]
                     if not target_column:
                         sg.popup("Please select a target column for Target Encoding.")
-                    else:
-                        df = target_encoding(df, column, target_column)
-                        sg.popup(f"Target Encoding applied to column: {column} using target column: {target_column}")
+                        continue
+                    df = target_encoding(df, column, target_column)
+                    encoding_method = f"Target Encoding (target: {target_column})"
 
-
-                all_columns = list(df.columns)
-                window["-PLOT_SELECT-"].update(values=all_columns)
-                window["-ENCODE_COL-"].update(values=all_columns)
-                window["-TARGET_COL-"].update(values=all_columns)
-                window["-REPLACE_COL-"].update(values=all_columns)
-                window["-ALL_REPLACE_COL-"].update(values=all_columns)
-                window["-COL_SELECT-"].update(values=all_columns)
-                window["-SCALE_COL_SELECT-"].update(values=all_columns)
                 preview_df = df.head(10)
+
                 table_data = []
                 for i, row in preview_df.iterrows():
                     row_data = [str(i)]
@@ -1800,12 +2201,56 @@ while True:
                         else:
                             row_data.append(str(val))
                     table_data.append(row_data)
-                window["-CLEANED_DATA-"].update(values=table_data)
-                try:
-                    window["-CLEANED_DATA-"].ColumnHeadings = ["Index"] + list(preview_df.columns)
-                except:
-                    pass
+
+                headers = ["Index"] + list(preview_df.columns)
+
+                encoding_layout = [
+                    [sg.Text(f"Encoding Results: {encoding_method} applied to column '{column}'")],
+                    [sg.Table(
+                        values=table_data,
+                        headings=headers,
+                        key="-ENCODING_RESULT-",
+                        auto_size_columns=True,
+                        justification='center',
+                        expand_x=True,
+                        num_rows=min(20, len(table_data)),
+                        display_row_numbers=False
+                    )],
+                    [sg.Button("Close", key="-CLOSE_ENCODING-")]
+                ]
+
+                encoding_window = sg.Window(
+                    "Encoding Results",
+                    [[sg.Frame(f"Data After {encoding_method}", encoding_layout)]],
+                    modal=True,
+                    finalize=True,
+                    resizable=True,
+                    size=(1000, 500)
+                )
+
+                while True:
+                    encoding_event, encoding_values = encoding_window.read()
+                    if encoding_event in (sg.WIN_CLOSED, "-CLOSE_ENCODING-"):
+                        break
+
+                encoding_window.close()
+
+                all_columns = list(df.columns)
+                window["-PLOT_SELECT-"].update(values=all_columns)
+                window["-ENCODE_COL-"].update(values=all_columns)
+                window["-TARGET_COL-"].update(values=all_columns)
+                window["-REPLACE_COL-"].update(values=all_columns)
+                window["-ALL_REPLACE_COL-"].update(values=all_columns)
+                window["-COL_SELECT-"].update(values=all_columns)
+                window["-SCALE_COL_SELECT-"].update(values=all_columns)
+
+                sg.popup(f"{encoding_method} applied to column: {column}")
+
             except Exception as e:
+                print(f"Error applying encoding: {e}")
+                import traceback
+
+                traceback.print_exc()
                 sg.popup(f"Error applying encoding: {str(e)}")
 
     elif event == "-SAVE_ENCODED-":
