@@ -1,0 +1,56 @@
+<svg viewBox="0 0 800 800" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background circle -->
+  <circle cx="400" cy="400" r="380" fill="#f0f6ff" />
+  
+  <!-- Data Warehouse Building Structure -->
+  <g transform="translate(175, 150)">
+    <!-- Warehouse Base -->
+    <path d="M225 280 L425 380 L225 480 L25 380 Z" fill="#4285f4" fill-opacity="0.9" stroke="#2c5aa0" stroke-width="3" />
+    <path d="M225 280 L225 480 L25 380 L25 180 Z" fill="#3367d6" fill-opacity="0.85" stroke="#2c5aa0" stroke-width="3" />
+    <path d="M225 280 L425 380 L425 180 L225 80 Z" fill="#5c9ce6" fill-opacity="0.85" stroke="#2c5aa0" stroke-width="3" />
+    
+    <!-- Data Flow Lines -->
+    <path d="M225 80 L225 280" stroke="#34a853" stroke-width="4" stroke-dasharray="15,8" />
+    <path d="M425 180 L425 380" stroke="#ea4335" stroke-width="4" stroke-dasharray="15,8" />
+    <path d="M25 180 L25 380" stroke="#fbbc04" stroke-width="4" stroke-dasharray="15,8" />
+    
+    <!-- Data Nodes/Connection Points -->
+    <circle cx="225" cy="80" r="18" fill="#34a853" />
+    <circle cx="425" cy="180" r="18" fill="#ea4335" />
+    <circle cx="25" cy="180" r="18" fill="#fbbc04" />
+    <circle cx="225" cy="480" r="18" fill="#4285f4" />
+    
+    <!-- Middle Database Cylinder -->
+    <ellipse cx="225" cy="330" rx="70" ry="30" fill="#5e35b1" stroke="#4527a0" stroke-width="2" />
+    <path d="M155 330 L155 370 C155 387 185 400 225 400 C265 400 295 387 295 370 L295 330" fill="#7e57c2" stroke="#4527a0" stroke-width="2" />
+    <ellipse cx="225" cy="370" rx="70" ry="30" fill="#7e57c2" fill-opacity="0.85" stroke="#4527a0" stroke-width="2" />
+    
+    <!-- Data Analysis Elements -->
+    <!-- Bar Chart -->
+    <rect x="180" y="325" width="10" height="25" fill="#ffffff" stroke="#333333" stroke-width="1" />
+    <rect x="195" y="315" width="10" height="35" fill="#ffffff" stroke="#333333" stroke-width="1" />
+    <rect x="210" y="330" width="10" height="20" fill="#ffffff" stroke="#333333" stroke-width="1" />
+    <rect x="225" y="310" width="10" height="40" fill="#ffffff" stroke="#333333" stroke-width="1" />
+    <rect x="240" y="320" width="10" height="30" fill="#ffffff" stroke="#333333" stroke-width="1" />
+    
+    <!-- Data Fusion Symbol -->
+    <g transform="translate(150, 120)">
+      <path d="M75 0 L150 40 L75 80 L0 40 Z" fill="#03a9f4" fill-opacity="0.9" stroke="#0288d1" stroke-width="2" />
+      <path d="M75 0 L75 80" stroke="#ffffff" stroke-width="3" />
+      <path d="M0 40 L150 40" stroke="#ffffff" stroke-width="3" />
+      <circle cx="75" cy="40" r="15" fill="#ff5722" stroke="#ffffff" stroke-width="2" />
+    </g>
+    
+    <!-- Binary Data Stream -->
+    <text x="25" y="250" font-family="Courier New" font-size="16" fill="#ffffff">10110</text>
+    <text x="80" y="280" font-family="Courier New" font-size="16" fill="#ffffff">01001</text>
+    <text x="320" y="280" font-family="Courier New" font-size="16" fill="#ffffff">11010</text>
+    <text x="370" y="250" font-family="Courier New" font-size="16" fill="#ffffff">00101</text>
+  </g>
+  
+  <!-- Text "DataFusion" -->
+  <text x="400" y="620" font-family="Arial" font-size="60" font-weight="bold" text-anchor="middle" fill="#333333">DataFusion</text>
+  
+  <!-- Tagline -->
+  <text x="400" y="670" font-family="Arial" font-size="24" text-anchor="middle" fill="#555555">Data Warehouse &amp; Analysis</text>
+</svg>

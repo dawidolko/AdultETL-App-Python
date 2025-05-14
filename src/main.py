@@ -2,11 +2,12 @@ import PySimpleGUI as sg
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import os
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from scipy.stats import kurtosis, skew
 from tkinter import filedialog
-from PIL import Image, ImageTk 
+from PIL import Image, ImageTk
 
 WINDOW_WIDTH = 1200
 WINDOW_HEIGHT = 800
@@ -16,12 +17,14 @@ df = None
 original_df = None
 figure_canvas_agg = None
 
+
 def browse_for_csv_file():
     file_path = filedialog.askopenfilename(
         title="Wybierz plik CSV",
         filetypes=[("CSV Files", "*.csv"), ("All Files", "*.*")]
     )
     return file_path if file_path else None
+
 
 def set_window_icon(window, icon_path):
     try:
@@ -34,18 +37,18 @@ def set_window_icon(window, icon_path):
             else:
                 print("Nie można znaleźć pliku ikony.")
                 return
-        
+
         root = window.TKroot
-        
+
         icon_image = Image.open(icon_path)
-        
+
         icon_photo = ImageTk.PhotoImage(icon_image)
-        
+
         root.iconphoto(True, icon_photo)
-        
-        print(f"Ikona aplikacji ustawiona poprawnie z pliku {icon_path}")
+
     except Exception as e:
-        print(f"Błąd podczas ustawiania ikony aplikacji: {e}")
+        print(f"Error icon: {e}")
+
 
 def load_dataset(file_path=None, is_predefined=True):
     global original_df
@@ -68,11 +71,7 @@ def load_dataset(file_path=None, is_predefined=True):
 
             numeric_cols = ['age', 'fnlwgt', 'education-num', 'capital-gain', 'capital-loss', 'hours-per-week']
             for col in numeric_cols:
-                print(f"Converting {col} to numeric during dataset load...")
                 df[col] = pd.to_numeric(df[col], errors='coerce')
-
-            print("Column data types after loading Adult Dataset:")
-            print(df.dtypes)
 
             categorical_cols = ['workclass', 'education', 'marital-status', 'occupation', 'relationship',
                                 'race', 'sex', 'native-country', 'income']
@@ -260,18 +259,14 @@ def compute_statistics(df, dataset_type):
 
         for col in numeric_cols:
             if col in df.columns:
-                print(f"Converting {col} to numeric for stats calculation...")
                 df = df.copy()
                 df[col] = pd.to_numeric(df[col], errors='coerce')
 
-        print("Numeric column types after conversion:")
         for col in numeric_cols:
             if col in df.columns:
                 print(f"{col}: {df[col].dtype}")
     else:
         numeric_cols = df.select_dtypes(include=[np.number]).columns
-
-    print(f"Computing statistics for numeric columns: {numeric_cols}")
 
     for col in numeric_cols:
         if col not in df.columns:
@@ -279,7 +274,6 @@ def compute_statistics(df, dataset_type):
             continue
 
         col_data = df[col].dropna()
-        print(f"Computing statistics for {col}, found {len(col_data)} non-null values")
 
         if len(col_data) == 0:
             stats_data.append([col, None, None, None, None, None, None, None, None, None])
@@ -302,7 +296,6 @@ def compute_statistics(df, dataset_type):
                                    round(float(skew(col_data)), 2),
                                    round(float(kurtosis(col_data)), 2)
                                    ])
-                print(f"Successfully calculated statistics for {col}")
             except Exception as e:
                 print(f"Error calculating statistics for {col}: {e}")
                 stats_data.append([col, None, None, None, None, None, None, None, None, None])
@@ -316,7 +309,6 @@ def compute_statistics(df, dataset_type):
     for col in categorical_cols:
         if col in df.columns:
             col_data = df[col].dropna()
-            print(f"Computing statistics for categorical column {col}...")
             if len(col_data) == 0:
                 stats_data.append([col, None, None])
             else:
@@ -331,27 +323,18 @@ def compute_statistics(df, dataset_type):
 def compute_correlation(df):
     numeric_cols = df.select_dtypes(include=[np.number]).columns
 
-    print(f"Numeric columns for correlation: {numeric_cols}")
-    print(f"Number of numeric columns: {len(numeric_cols)}")
-
     if len(numeric_cols) < 2:
         print("Not enough numeric columns for correlation")
         return None, None
 
     try:
         df_clean = df[numeric_cols].dropna()
-        print(f"Computing correlation on {len(df_clean)} rows after dropping NA")
 
         pearson_corr = df_clean.corr(method='pearson')
         spearman_corr = df_clean.corr(method='spearman')
 
-        print(f"Pearson correlation matrix shape: {pearson_corr.shape}")
-        print(f"Spearman correlation matrix shape: {spearman_corr.shape}")
-
         if not pearson_corr.empty:
             first_col = pearson_corr.columns[0]
-            print(
-                f"Sample correlation value - Pearson[{first_col},{first_col}]: {pearson_corr.loc[first_col, first_col]}")
 
         return pearson_corr, spearman_corr
     except Exception as e:
@@ -369,14 +352,14 @@ def format_correlation_matrices(pearson_corr, spearman_corr):
 
     pearson_data = []
     for idx, row in pearson_corr.iterrows():
-        row_data = [idx] 
+        row_data = [idx]
         for col in numeric_cols:
             row_data.append(round(row[col], 3))
         pearson_data.append(row_data)
 
     spearman_data = []
     for idx, row in spearman_corr.iterrows():
-        row_data = [idx] 
+        row_data = [idx]
         for col in numeric_cols:
             row_data.append(round(row[col], 3))
         spearman_data.append(row_data)
@@ -656,7 +639,7 @@ def generate_plot(df, column, chart_type, options):
 
             wedges, texts, autotexts = ax.pie(
                 counts,
-                labels=None, 
+                labels=None,
                 autopct='%1.1f%%' if show_values else None,
                 colors=pie_colors,
                 startangle=90,
@@ -717,6 +700,7 @@ def display_plot_in_new_window(fig, title="Plot Viewer"):
     plot_window.close()
     plt.close(fig)
 
+
 def draw_figure(canvas, figure):
     for child in canvas.winfo_children():
         child.destroy()
@@ -731,9 +715,6 @@ def extract_subtable(df, row_indices=None, col_indices=None, keep=False):
         return None
 
     result_df = df.copy()
-
-    print(f"Original dataframe has {len(df)} rows and {len(df.columns)} columns")
-    print(f"Keep mode: {keep}")
 
     if row_indices is not None:
         try:
@@ -819,8 +800,8 @@ def extract_subtable(df, row_indices=None, col_indices=None, keep=False):
             sg.popup(f"Error processing column indices: {e}")
             return None
 
-    print(f"Final dataframe has {len(result_df)} rows and {len(result_df.columns)} columns")
     return result_df
+
 
 def update_table_headers(window, table_key, df, prefix_col="Index"):
     try:
@@ -839,6 +820,7 @@ def update_table_headers(window, table_key, df, prefix_col="Index"):
         traceback.print_exc()
         return False
 
+
 def dataframe_to_table_data(df, max_rows=None):
     if max_rows is not None:
         df = df.head(max_rows)
@@ -856,6 +838,7 @@ def dataframe_to_table_data(df, max_rows=None):
         table_data.append(row_data)
 
     return table_data
+
 
 def remove_columns(df, cols_to_remove):
     for c in cols_to_remove:
@@ -1015,16 +998,17 @@ def add_symbolic_column(df):
         )
     return df
 
+
 # Tab 0: Logo & Creators Info
 tab0_layout = [
     [sg.Text("", size=(1, 1))],
     [sg.Column([
-        [sg.Text("Subject: Data Warehousing", font=("Helvetica", 16), justification='center')],
+        [sg.Text("Subject: Data Warehousing", font=("Helvetica", 26), justification='center')],
         [sg.Image(filename="assets/logo.png", key="-LOGO-", size=(250, 250))],
-        [sg.Text("Created by:", font=("Helvetica", 16), justification='center')],
-        [sg.Text("Dawid Olko", font=("Helvetica", 14), justification='center')],
-        [sg.Text("Piotr Smoła", font=("Helvetica", 14), justification='center')],
-        [sg.Button("Go to data", key="-ENTER-", font=("Helvetica", 14), size=(20, 1), pad=((0, 0), (20, 0)))]
+        [sg.Text("Created by:", font=("Helvetica", 26), justification='center')],
+        [sg.Text("Dawid Olko", font=("Helvetica", 24), justification='center')],
+        [sg.Text("Piotr Smoła", font=("Helvetica", 24), justification='center')],
+        [sg.Button("Go to data", key="-ENTER-", font=("Helvetica", 24), size=(35, 1), pad=((30, 30), (30, 30)))]
     ], justification='center', element_justification='center')],
     [sg.Text("", size=(1, 1))],
 ]
@@ -1036,15 +1020,15 @@ tab1_layout = [
             [sg.Radio("Predefined Dataset", "DATA_SOURCE", default=True, key="-PREDEFINED_DATASET-"),
              sg.Radio("Custom CSV File", "DATA_SOURCE", key="-CUSTOM_CSV-")],
             [sg.Text("Select Dataset:"), sg.Combo(["Adult Dataset", "Kidney Disease Dataset"],
-                                                 default_value="Adult Dataset", key="-SELECT_FILE-", size=(30, 1)),
+                                                  default_value="Adult Dataset", key="-SELECT_FILE-", size=(30, 1)),
              sg.Button("Browse...", key="-BROWSE_CSV-", visible=False),
              sg.Text("", key="-FILE_PATH-", size=(40, 1), visible=False)],
             [sg.Button("Load Data", key="-LOAD-"),
              sg.Button("Restore Original Data", key="-RESTORE_DATA-"),
              sg.Button("Save Current Data", key="-SAVE_DATA-")]
-        ])],
+        ], size=(1120, 100))],
 
-        [sg.Multiline(size=(100, 6), key="-DATA_INFO-", disabled=True)],
+        [sg.Multiline(size=(157, 6), key="-DATA_INFO-", disabled=True)],
 
         [sg.Frame("Data Statistics", [
             [sg.Button("Compute Stats", key="-STATS-"), sg.Button("Correlation", key="-CORR-")],
@@ -1083,7 +1067,7 @@ tab2_layout = [
         [sg.Button("Extract Subtable", key="-EXTRACT_BTN-"),
          sg.Button("Save Subtable", key="-SAVE_SUBTABLE-")],
 
-    ], size=(1100, 150))],
+    ], size=(1120, 170))],
 
     [sg.Frame("Value Replacement", [
         [sg.Text("Select Column:"),
@@ -1106,7 +1090,7 @@ tab2_layout = [
          sg.InputText(key="-ALL_NEW_VAL-", size=(30, 1))],
 
         [sg.Button("Replace All Values", key="-REPLACE_ALL_BTN-")]
-    ], size=(1100, 300))]
+    ], size=(1120, 225))]
 ]
 
 # Tab 3: Scaling & Visualization
@@ -1156,8 +1140,8 @@ tab3_layout = [
              sg.Button("Save Plot as Image", key="-SAVE_PLOT-")],
 
             [sg.Column([
-                [sg.Canvas(key="-CANVAS-", size=(1100, 150))]
-            ], vertical_scroll_only=True, size=(1200, 200))]
+                [sg.Canvas(key="-CANVAS-", size=(1100, 20))]
+            ], vertical_scroll_only=True, size=(1200, 20))]
         ])]
     ])]
 ]
@@ -1207,18 +1191,21 @@ layout = [
         [sg.TabGroup([[
             sg.Tab("Creators & Info", tab0_layout, expand_x=True, expand_y=True, background_color=background_color),
             sg.Tab("Data & Stats", tab1_layout, expand_x=True, expand_y=True, background_color=background_color),
-            sg.Tab("Replacement & Subtable", tab2_layout, expand_x=True, expand_y=True, background_color=background_color),
-            sg.Tab("Scaling & Visualization", tab3_layout, expand_x=True, expand_y=True, background_color=background_color),
-            sg.Tab("Data Cleaning & Transformation", tab4_layout, expand_x=True, expand_y=True, background_color=background_color)
+            sg.Tab("Replacement & Subtable", tab2_layout, expand_x=True, expand_y=True,
+                   background_color=background_color),
+            sg.Tab("Scaling & Visualization", tab3_layout, expand_x=True, expand_y=True,
+                   background_color=background_color),
+            sg.Tab("Data Cleaning & Transformation", tab4_layout, expand_x=True, expand_y=True,
+                   background_color=background_color)
         ]], tab_location='top', font=("Helvetica", 14, "bold"), expand_x=True, expand_y=True, key='-TABGROUP-',
             size=(1200, 800))]
     ], scrollable=False, expand_x=True, expand_y=True)]
 ]
 
-window = sg.Window("DataFusion - Project", 
-                   layout, 
+window = sg.Window("DataFusion - Project",
+                   layout,
                    size=(WINDOW_WIDTH, WINDOW_HEIGHT),
-                   resizable=False, 
+                   resizable=False,
                    finalize=True,
                    element_justification='center')
 
@@ -1226,23 +1213,23 @@ set_window_icon(window, "assets/logo.png")
 
 try:
     root = window.TKroot
-    
+
     root.resizable(False, False)
-    
+
     screen_width = root.winfo_screenwidth()
     screen_height = root.winfo_screenheight()
     x = (screen_width - WINDOW_WIDTH) // 2
     y = (screen_height - WINDOW_HEIGHT) // 2
     root.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}+{x}+{y}")
-    
+
     if os.name == 'nt':
         import ctypes
         from ctypes import windll
-        
+
         hwnd = windll.user32.GetParent(root.winfo_id())
-        
-        style = windll.user32.GetWindowLongW(hwnd, -16) 
-        style = style & ~0x10000 
+
+        style = windll.user32.GetWindowLongW(hwnd, -16)
+        style = style & ~0x10000
         windll.user32.SetWindowLongW(hwnd, -16, style)
 except Exception as e:
     print(f"Błąd podczas konfiguracji okna: {e}")
@@ -1338,8 +1325,6 @@ while True:
         else:
             try:
                 dataset_type = values["-SELECT_FILE-"] if values["-PREDEFINED_DATASET-"] else "Custom"
-                print("Data types before statistics calculation:")
-                print(df.dtypes)
                 stats_data = compute_statistics(df, dataset_type)
 
                 numeric_stats = []
@@ -1350,7 +1335,6 @@ while True:
                     elif len(stat) <= 3:
                         categorical_stats.append(stat)
 
-                print(f"Found {len(numeric_stats)} numeric stats and {len(categorical_stats)} categorical stats")
                 window["-NUMERIC_STATS-"].update(values=numeric_stats)
                 window["-CATEGORICAL_STATS-"].update(values=categorical_stats)
 
@@ -1414,7 +1398,8 @@ while True:
                                           size=(800, len(spearman_data)),
                                           display_row_numbers=False)]
                             ]
-                            new_correlation_frame = sg.Frame("Correlation Results", new_correlation_layout, expand_x=True)
+                            new_correlation_frame = sg.Frame("Correlation Results", new_correlation_layout,
+                                                             expand_x=True)
                             corr_window = sg.Window("Correlation Results",
                                                     [[new_correlation_frame]],
                                                     modal=True,
@@ -1427,7 +1412,6 @@ while True:
                             corr_window.close()
                             correlation_frame.update(visible=True)
                         else:
-                            sg.popup("Find Correlation Results frame, displaying in new window.")
                             corr_window = sg.Window("Correlation Results",
                                                     [[sg.Frame("Correlation Results", [
                                                         [sg.Text("Pearson Correlation Matrix:")],
@@ -1460,6 +1444,7 @@ while True:
                     except Exception as e:
                         print(f"Error updating correlation frame: {e}")
                         import traceback
+
                         traceback.print_exc()
                         corr_window = sg.Window("Correlation Results",
                                                 [[sg.Frame("Correlation Results", [
@@ -1493,6 +1478,7 @@ while True:
             except Exception as e:
                 print(f"Error in correlation calculation: {e}")
                 import traceback
+
                 traceback.print_exc()
                 sg.popup(f"Error calculating correlation: {str(e)}")
 
@@ -1532,8 +1518,6 @@ while True:
             try:
                 row_input = values["-ROW_INPUT-"].strip()
                 col_input = values["-SELECTED_COLS-"].strip()
-                print(f"Row input: '{row_input}'")
-                print(f"Column input: '{col_input}'")
                 row_indices = None
 
                 if row_input:
@@ -1547,7 +1531,6 @@ while True:
                     col_indices = [int(i) if i.isdigit() else i for i in col_indices]
                     print(f"Parsed column indices: {col_indices}")
                 keep = values["-KEEP_EXTRACT-"]
-                print(f"Keep mode: {keep}")
                 sub_df = extract_subtable(df, row_indices, col_indices, keep)
 
                 if sub_df is None or sub_df.empty:
