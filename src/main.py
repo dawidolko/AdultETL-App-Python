@@ -6,8 +6,6 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from scipy.stats import kurtosis, skew
 from tkinter import filedialog
-import os
-import base64
 from PIL import Image, ImageTk 
 
 WINDOW_WIDTH = 1200
