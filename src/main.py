@@ -903,15 +903,29 @@ def replace_all_values(df, column, new_value):
         sg.popup(f"Column '{column}' does not exist!")
         return df
 
-    if isinstance(df[column].dtype, pd.CategoricalDtype):
-        if new_value not in df[column].cat.categories:
-            df[column] = df[column].cat.set_categories(list(df[column].cat.categories) + [new_value])
-        df[column] = new_value
-    else:
-        df[column] = new_value
+    df = df.copy()
 
-    return df
+    try:
+        if pd.api.types.is_categorical_dtype(df[column]):
+            df[column] = df[column].astype(str)
+            df[column] = new_value
+        else:
+            df[column] = new_value
 
+        if all(str(val).replace('.', '', 1).replace('-', '', 1).isdigit()
+               for val in df[column].dropna().unique()):
+            try:
+                df[column] = pd.to_numeric(df[column], errors='ignore')
+            except:
+                pass
+
+        return df
+    except Exception as e:
+        print(f"Error in replace_all_values: {e}")
+        import traceback
+        traceback.print_exc()
+        sg.popup(f"Error replacing values: {e}")
+        return df
 
 def handle_missing_values(df, strategy):
     if strategy == 'remove':
@@ -1026,7 +1040,7 @@ tab1_layout = [
             [sg.Button("Load Data", key="-LOAD-"),
              sg.Button("Restore Original Data", key="-RESTORE_DATA-"),
              sg.Button("Save Current Data", key="-SAVE_DATA-")]
-        ], size=(1120, 100))],
+        ], size=(1120, 120))],
 
         [sg.Multiline(size=(157, 6), key="-DATA_INFO-", disabled=True)],
 
@@ -1037,15 +1051,26 @@ tab1_layout = [
             [sg.Table(values=[],
                       headings=["Column", "Min", "Max", "Mean", "Median", "Std", "Mode", "Variance", "Skewness",
                                 "Kurtosis"],
-                      key="-NUMERIC_STATS-", auto_size_columns=True, justification='center',
-                      expand_x=True, expand_y=True, size=(1100, 10))],
+                      key="-NUMERIC_STATS-",
+                      auto_size_columns=False,
+                      col_widths=[15, 10, 10, 10, 10, 10, 10, 10, 10, 10],
+                      justification='center',
+                      expand_x=True,
+                      expand_y=True,
+                      size=(1100, 10))],
 
             [sg.Text("Categorical Columns Statistics:")],
-            [sg.Table(values=[], headings=["Column", "Value Counts", "Mode"],
-                      key="-CATEGORICAL_STATS-", auto_size_columns=True, justification='center',
-                      expand_x=True, expand_y=True, size=(800, 10))]
+            [sg.Table(values=[],
+                      headings=["Column", "Value Counts", "Mode"],
+                      key="-CATEGORICAL_STATS-",
+                      auto_size_columns=False,
+                      col_widths=[15, 50, 15],
+                      justification='center',
+                      expand_x=True,
+                      expand_y=True,
+                      size=(1100, 10))]
         ], expand_x=True)],
-    ], scrollable=True, vertical_scroll_only=True, expand_x=True, expand_y=True, size=(1180, 750))]
+    ], scrollable=True, vertical_scroll_only=False, expand_x=True, expand_y=True, size=(1180, 750))]
 ]
 
 # Tab 2: Extract Subtable
@@ -1067,7 +1092,7 @@ tab2_layout = [
         [sg.Button("Extract Subtable", key="-EXTRACT_BTN-"),
          sg.Button("Save Subtable", key="-SAVE_SUBTABLE-")],
 
-    ], size=(1120, 170))],
+    ], size=(1120, 200))],
 
     [sg.Frame("Value Replacement", [
         [sg.Text("Select Column:"),
@@ -1090,7 +1115,7 @@ tab2_layout = [
          sg.InputText(key="-ALL_NEW_VAL-", size=(30, 1))],
 
         [sg.Button("Replace All Values", key="-REPLACE_ALL_BTN-")]
-    ], size=(1120, 225))]
+    ], size=(1120, 245))]
 ]
 
 # Tab 3: Scaling & Visualization
@@ -1383,7 +1408,8 @@ while True:
                                 [sg.Table(values=pearson_data,
                                           headings=headers,
                                           key="-PEARSON_CORR_NEW-",
-                                          auto_size_columns=True,
+                                          auto_size_columns=False,
+                                          col_widths=[15] + [10] * (len(headers) - 1),
                                           justification='center',
                                           expand_x=True,
                                           size=(800, len(pearson_data)),
@@ -1415,23 +1441,31 @@ while True:
                             corr_window = sg.Window("Correlation Results",
                                                     [[sg.Frame("Correlation Results", [
                                                         [sg.Text("Pearson Correlation Matrix:")],
-                                                        [sg.Table(values=pearson_data,
-                                                                  headings=headers,
-                                                                  key="-PEARSON_CORR_NEW-",
-                                                                  auto_size_columns=True,
-                                                                  justification='center',
-                                                                  expand_x=True,
-                                                                  size=(800, len(pearson_data)),
-                                                                  display_row_numbers=False)],
+                                                        [sg.Column([
+                                                            [sg.Table(values=pearson_data,
+                                                                      headings=headers,
+                                                                      key="-PEARSON_CORR_NEW-",
+                                                                      auto_size_columns=False,
+                                                                      col_widths=[15] + [10] * (len(headers) - 1),
+                                                                      justification='center',
+                                                                      expand_x=True,
+                                                                      size=(800, len(pearson_data)),
+                                                                      display_row_numbers=False)]
+                                                        ], scrollable=True, vertical_scroll_only=False, expand_x=True,
+                                                            size=(820, min(400, len(pearson_data) * 25 + 40)))],
                                                         [sg.Text("Spearman Correlation Matrix:")],
-                                                        [sg.Table(values=spearman_data,
-                                                                  headings=headers,
-                                                                  key="-SPEARMAN_CORR_NEW-",
-                                                                  auto_size_columns=True,
-                                                                  justification='center',
-                                                                  expand_x=True,
-                                                                  size=(800, len(spearman_data)),
-                                                                  display_row_numbers=False)]
+                                                        [sg.Column([
+                                                            [sg.Table(values=spearman_data,
+                                                                      headings=headers,
+                                                                      key="-SPEARMAN_CORR_NEW-",
+                                                                      auto_size_columns=False,
+                                                                      col_widths=[15] + [10] * (len(headers) - 1),
+                                                                      justification='center',
+                                                                      expand_x=True,
+                                                                      size=(800, len(spearman_data)),
+                                                                      display_row_numbers=False)]
+                                                        ], scrollable=True, vertical_scroll_only=False, expand_x=True,
+                                                            size=(820, min(400, len(spearman_data) * 25 + 40)))]
                                                     ])]],
                                                     modal=True,
                                                     finalize=True,
@@ -1537,7 +1571,7 @@ while True:
                     window["-EXTRACT_OUT-"].update(values=[[]])
                     sg.popup("Invalid range or empty subtable.")
                 else:
-                    display_df = sub_df.head(10)
+                    display_df = sub_df.head(100)
 
                     table_data = []
                     for i, row in display_df.iterrows():
@@ -1647,7 +1681,7 @@ while True:
                     changes_made = not df[col_to_replace].equals(temp_df[col_to_replace])
 
                     if changes_made:
-                        display_df = df.head(10)
+                        display_df = df.head(100)
 
                         table_data = []
                         for i, row in display_df.iterrows():
@@ -1687,7 +1721,7 @@ while True:
                         )
 
                         while True:
-                            replace_event, replace_values = replace_window.read()
+                            replace_event, replace_vals = replace_window.read()
                             if replace_event in (sg.WIN_CLOSED, "-CLOSE_REPLACE-"):
                                 break
 
@@ -1734,7 +1768,7 @@ while True:
                 try:
                     df = replace_all_values(df, col_to_replace_all, new_value_all)
                     if col_to_replace_all in df.columns:
-                        display_df = df.head(10)
+                        display_df = df.head(100)
 
                         table_data = []
                         for i, row in display_df.iterrows():
@@ -1774,7 +1808,7 @@ while True:
                         )
 
                         while True:
-                            replace_all_event, replace_all_values = replace_all_window.read()
+                            replace_all_event, replace_all_vals = replace_all_window.read()
                             if replace_all_event in (sg.WIN_CLOSED, "-CLOSE_REPLACE_ALL-"):
                                 break
 
@@ -1839,7 +1873,7 @@ while True:
                     if col in scaled_df.columns and col in df.columns:
                         df[col] = scaled_df[col]
 
-                preview_df = df[cols_list].head(10)
+                preview_df = df[cols_list].head(100)
 
                 table_data = []
                 for i, row in preview_df.iterrows():
@@ -1916,7 +1950,7 @@ while True:
                 cols_to_show = [c.strip() for c in values["-SELECTED_SCALE_COLS-"].split(",") if c.strip() != ""]
             else:
                 cols_to_show = list(df.columns[:min(5, len(df.columns))])
-            preview_df = df[cols_to_show].head(10)
+            preview_df = df[cols_to_show].head(100)
             data_rows = [preview_df.index.astype(str).tolist()] + preview_df.values.tolist()
             table_data = [[str(data_rows[0][i])] + [str(round(val, 4)) if isinstance(val, (int, float)) else str(val)
                                                     for val in row]
@@ -1993,7 +2027,7 @@ while True:
             try:
                 df = handle_missing_values(df, strategy)
 
-                preview_df = df.head(10)
+                preview_df = df.head(100)
 
                 table_data = []
                 for i, row in preview_df.iterrows():
@@ -2009,16 +2043,18 @@ while True:
 
                 cleaning_layout = [
                     [sg.Text(f"Missing Values Handling Results using '{strategy}' strategy")],
-                    [sg.Table(
-                        values=table_data,
-                        headings=headers,
-                        key="-MISSING_RESULT-",
-                        auto_size_columns=True,
-                        justification='center',
-                        expand_x=True,
-                        num_rows=min(20, len(table_data)),
-                        display_row_numbers=False
-                    )],
+                    [sg.Column([
+                        [sg.Table(values=table_data,
+                                  headings=headers,
+                                  key="-MISSING_RESULT-",
+                                  auto_size_columns=False,
+                                  col_widths=[10] + [15] * (len(headers) - 1),
+                                  justification='center',
+                                  expand_x=True,
+                                  num_rows=min(20, len(table_data)),
+                                  display_row_numbers=False)]
+                    ], scrollable=True, vertical_scroll_only=False, expand_x=True,
+                        size=(880, min(500, len(table_data) * 25 + 40)))],
                     [sg.Button("Close", key="-CLOSE_MISSING-")]
                 ]
 
@@ -2075,7 +2111,7 @@ while True:
 
                 removed_count = original_len - len(df)
 
-                preview_df = df.head(10)
+                preview_df = df.head(100)
 
                 table_data = []
                 for i, row in preview_df.iterrows():
@@ -2091,16 +2127,17 @@ while True:
 
                 dedup_layout = [
                     [sg.Text(f"Duplicate Removal Results - Removed {removed_count} rows")],
-                    [sg.Table(
-                        values=table_data,
-                        headings=headers,
-                        key="-DEDUP_RESULT-",
-                        auto_size_columns=True,
-                        justification='center',
-                        expand_x=True,
-                        num_rows=min(20, len(table_data)),
-                        display_row_numbers=False
-                    )],
+                    [sg.Column([
+                        [sg.Table(values=table_data,
+                                  headings=headers,
+                                  key="-DEDUP_RESULT-",
+                                  auto_size_columns=False,
+                                  col_widths=[10] + [15] * (len(headers) - 1),
+                                  justification='center',
+                                  expand_x=True,
+                                  num_rows=min(20, len(table_data)),
+                                  display_row_numbers=False)]
+                    ], scrollable=True, vertical_scroll_only=False, expand_x=True, size=(880, min(500, len(table_data) * 25 + 40)))],
                     [sg.Button("Close", key="-CLOSE_DEDUP-")]
                 ]
 
@@ -2171,7 +2208,7 @@ while True:
                     df = target_encoding(df, column, target_column)
                     encoding_method = f"Target Encoding (target: {target_column})"
 
-                preview_df = df.head(10)
+                preview_df = df.head(100)
 
                 table_data = []
                 for i, row in preview_df.iterrows():
@@ -2187,16 +2224,17 @@ while True:
 
                 encoding_layout = [
                     [sg.Text(f"Encoding Results: {encoding_method} applied to column '{column}'")],
-                    [sg.Table(
-                        values=table_data,
-                        headings=headers,
-                        key="-ENCODING_RESULT-",
-                        auto_size_columns=True,
-                        justification='center',
-                        expand_x=True,
-                        num_rows=min(20, len(table_data)),
-                        display_row_numbers=False
-                    )],
+                    [sg.Column([
+                        [sg.Table(values=table_data,
+                                  headings=headers,
+                                  key="-ENCODING_RESULT-",
+                                  auto_size_columns=False,
+                                  col_widths=[10] + [15] * (len(headers) - 1),
+                                  justification='center',
+                                  expand_x=True,
+                                  num_rows=min(20, len(table_data)),
+                                  display_row_numbers=False)]
+                    ], scrollable=True, vertical_scroll_only=False, expand_x=True, size=(980, min(500, len(table_data) * 25 + 40)))],
                     [sg.Button("Close", key="-CLOSE_ENCODING-")]
                 ]
 
